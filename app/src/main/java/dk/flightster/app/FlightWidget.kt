@@ -83,7 +83,7 @@ class FlightWidget : AppWidgetProvider() {
             val offline = prefs.lastCheck > 0L &&
                 System.currentTimeMillis() - prefs.lastCheck > 90 * 60_000L
 
-            val photo = if (prefs.showPhotos && flight != null) PhotoCache.get(flight) else null
+            val photo = if (prefs.showPhotos && flight != null) PhotoStore.load(context, flight) else null
 
             val bitmap = WidgetRenderer.render(
                 widthPx = w, heightPx = h,
@@ -161,31 +161,7 @@ class FlightWidget : AppWidgetProvider() {
 
     override fun onDisabled(context: Context) {
         cancelUpdates(context)
-        PhotoCache.clear()
-    }
-}
-
-/** Ét foto ad gangen holdes i hukommelsen, så widgeten kan gentegnes gratis. */
-object PhotoCache {
-    private var key: String? = null
-    private var value: PhotoResult? = null
-
-    @Synchronized
-    fun put(flight: Flight, photo: PhotoResult?) {
-        key = flight.callsign + "|" + (flight.registration ?: "")
-        value = photo
-    }
-
-    @Synchronized
-    fun get(flight: Flight): PhotoResult? {
-        val k = flight.callsign + "|" + (flight.registration ?: "")
-        return if (k == key) value else null
-    }
-
-    @Synchronized
-    fun clear() {
-        key = null
-        value = null
+        PhotoStore.clear(context)
     }
 }
 
@@ -223,14 +199,20 @@ class WidgetWorker(
 
         if (flight != null) {
             prefs.saveFlight(flight)
-            val photo = if (prefs.showPhotos) {
-                try {
-                    FlightRepo.fetchPhoto(prefs.baseUrl, flight, maxWidth = 640)
-                } catch (_: Exception) {
-                    null
+            if (prefs.showPhotos) {
+                // Findes billedet allerede for netop dette fly, hentes det ikke igen
+                val existing = PhotoStore.load(context, flight)
+                if (existing == null) {
+                    val photo = try {
+                        FlightRepo.fetchPhoto(flight, maxWidth = 640)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    PhotoStore.save(context, flight, photo)
                 }
-            } else null
-            PhotoCache.put(flight, photo)
+            } else {
+                PhotoStore.clear(context)
+            }
         }
 
         redrawAll()
