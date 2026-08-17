@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Flightster</string>
+    <string name="widget_setup">Flightster widget</string>
+    <string name="widget_description">Seneste fly over din position</string>
+</resources>

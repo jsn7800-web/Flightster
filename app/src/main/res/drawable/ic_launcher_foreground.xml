@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Et fly set ovenfra, samme formsprog som tegningerne i appen. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#F2A63B"
+        android:pathData="M54,22 C56,22 57.5,24.5 58,28 L59,42 L82,56 L82,61 L59,55 L59.5,70 L68,76 L68,80 L54,76 L40,80 L40,76 L48.5,70 L49,55 L26,61 L26,56 L49,42 L50,28 C50.5,24.5 52,22 54,22 Z" />
+</vector>

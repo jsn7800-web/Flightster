@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Flightster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --line:#E6E2D9;
+    --amber:#F2A63B;
+    --muted:#6E6A62;
+    --dim:#403D38;
+    --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",Menlo,Consolas,monospace;
+    --u:1vmin;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;background:#000;overflow:hidden}
+  body{color:var(--line);font-family:var(--display);cursor:default}
+
+  /* 16:9 scene, letterboxed på alt andet */
+  .scene{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center}
+  .frame{position:relative;width:100%;height:100%;max-width:calc(100vh * 16 / 9);max-height:calc(100vw * 9 / 16);
+         display:grid;grid-template-rows:auto 1fr auto;padding:calc(3.2 * var(--u)) calc(4 * var(--u));overflow:hidden}
+  body.empty .frame{visibility:hidden}
+
+  .head{display:flex;align-items:baseline;justify-content:space-between;font-family:var(--mono);
+        font-size:calc(1.5 * var(--u));letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  .head .r{display:flex;align-items:center}
+  .head .mark{color:var(--amber);margin-right:calc(1.4 * var(--u))}
+  .head .clock{margin-right:calc(1.6 * var(--u));font-variant-numeric:tabular-nums}
+  .dot{width:calc(.9 * var(--u));height:calc(.9 * var(--u));border-radius:50%;background:var(--dim)}
+  .dot.live{background:var(--amber)}
+  .dot.warn{background:#C24B36}
+
+  .stage{display:grid;grid-template-columns:1.18fr 0.82fr;align-items:center;
+         min-height:0;overflow:hidden;padding:calc(2 * var(--u)) 0}
+  .info{min-width:0;min-height:0;overflow:hidden;padding-right:calc(3 * var(--u))}
+
+  .airline{display:flex;align-items:center;height:calc(5 * var(--u));margin-bottom:calc(1.2 * var(--u))}
+  .airline img{max-height:calc(5 * var(--u));max-width:calc(26 * var(--u));display:none}
+  .airline img.on{display:block}
+  .airline .fallback{font-family:var(--mono);font-size:calc(1.7 * var(--u));letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+
+  .callsign{font-weight:700;font-size:calc(11 * var(--u));line-height:.86;letter-spacing:.02em;color:#fff;
+            white-space:nowrap;overflow:hidden;text-overflow:clip}
+
+  .route{display:flex;align-items:flex-start;margin-top:calc(2.4 * var(--u))}
+  .apt{font-weight:600;font-size:calc(6.4 * var(--u));line-height:.95;letter-spacing:.03em;color:var(--amber)}
+  .apt span{display:block;font-family:var(--mono);font-weight:400;font-size:calc(1.4 * var(--u));letter-spacing:.1em;
+            color:var(--muted);text-transform:uppercase;margin-top:calc(.9 * var(--u));max-width:calc(20 * var(--u));
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .arrow{align-self:flex-start;margin:calc(1.6 * var(--u)) calc(2.6 * var(--u)) 0;width:calc(7 * var(--u));height:1px;background:var(--dim);position:relative;flex:0 0 auto}
+  .arrow:after{content:"";position:absolute;right:0;top:-calc(.45 * var(--u));border-left:calc(.9 * var(--u)) solid var(--dim);
+               border-top:calc(.5 * var(--u)) solid transparent;border-bottom:calc(.5 * var(--u)) solid transparent}
+  .route.unknown .apt{color:var(--dim)}
+
+  .typename{font-family:var(--mono);font-size:calc(1.8 * var(--u));letter-spacing:.16em;text-transform:uppercase;
+            color:var(--muted);margin-top:calc(3 * var(--u));
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .draw{display:flex;align-items:center;justify-content:center;
+        height:100%;min-width:0;min-height:0;overflow:hidden}
+  .draw svg{width:100%;height:100%;display:block}
+  .draw .photo{position:relative;width:100%;height:100%;display:none;
+               align-items:center;justify-content:center}
+  .draw .photo.on{display:flex}
+  .draw .photo img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+  .draw .credit{position:absolute;right:0;bottom:0;font-family:var(--mono);
+                font-size:calc(1.15 * var(--u));letter-spacing:.06em;color:var(--muted);
+                background:rgba(0,0,0,.55);padding:calc(.4 * var(--u)) calc(.9 * var(--u));
+                max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  body.hasphoto .draw svg{display:none}
+  .draw path{fill:#000;stroke:var(--line);stroke-width:1.35;stroke-linejoin:round;stroke-linecap:round;
+             vector-effect:non-scaling-stroke}
+  .draw path.accent{fill:none;stroke:var(--amber)}
+  .draw path.thin{fill:none;stroke:var(--muted);stroke-width:0.85}
+  .draw circle{fill:none;stroke:var(--muted);stroke-width:0.85;vector-effect:non-scaling-stroke}
+
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--dim);
+           padding-top:calc(1.8 * var(--u));min-width:0}
+  .m{min-width:0;overflow:hidden}
+  .m .v{white-space:nowrap}
+  .m .k{font-family:var(--mono);font-size:calc(1.3 * var(--u));letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  .m .v{font-weight:600;font-size:calc(5.4 * var(--u));line-height:1.05;color:#fff;font-variant-numeric:tabular-nums}
+  .m .v em{font-style:normal;font-size:calc(2.1 * var(--u));color:var(--muted);margin-left:calc(.5 * var(--u))}
+  .others{font-family:var(--mono);font-size:calc(1.35 * var(--u));letter-spacing:.14em;color:var(--dim);
+          margin-top:calc(1.4 * var(--u));text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:calc(1.9 * var(--u))}
+
+  .controls{position:fixed;right:calc(1.4 * var(--u));bottom:calc(1.4 * var(--u));display:flex;
+            opacity:0;pointer-events:none;transition:opacity .3s;z-index:30}
+  .controls.show,.controls:focus-within{opacity:1;pointer-events:auto}
+  .controls button{width:calc(8 * var(--u));height:calc(8 * var(--u));min-width:46px;min-height:46px;
+        margin-left:calc(1.4 * var(--u));border:0;background:none;color:#fff;opacity:.9;
+        cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+  .controls button:hover{opacity:1;color:var(--amber)}
+  .controls button:focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:3px}
+  .controls svg{width:74%;height:74%;fill:none;stroke:currentColor;stroke-width:1.9;
+                stroke-linecap:round;stroke-linejoin:round;
+                filter:drop-shadow(0 1px 3px rgba(0,0,0,.9))}
+
+  .sheet{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.93);display:none;
+         align-items:center;justify-content:center;padding:20px;z-index:40}
+  .sheet.open{display:flex}
+  .card{background:#0B0B0A;border:1px solid #262420;max-width:640px;width:100%;max-height:92vh;overflow-y:auto;padding:22px 24px}
+  .card h2{font-size:26px;letter-spacing:.1em;text-transform:uppercase;margin:0 0 6px;color:#fff;font-weight:700}
+  .card p.lede{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:0 0 18px;line-height:1.65}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field{display:flex;flex-direction:column}
+  .field label{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  .field input,.field select{background:#000;border:1px solid #2C2A26;color:#fff;font-family:var(--mono);font-size:13px;padding:8px 10px;border-radius:2px;width:100%}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--amber)}
+  .field .hint{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5}
+  .full{grid-column:1 / -1}
+  .mapwrap{display:none;margin-bottom:18px;border:1px solid #262420}
+  .mapwrap.open{display:block}
+  .map{position:relative;height:300px;overflow:hidden;background:#0B0B0A;cursor:grab;
+       touch-action:none;user-select:none;-webkit-user-select:none}
+  .map.drag{cursor:grabbing}
+  .map .tiles{position:absolute;top:0;left:0;width:100%;height:100%;
+              filter:invert(1) hue-rotate(180deg) brightness(.78) contrast(.92) saturate(.55)}
+  .map .tiles img{position:absolute;width:256px;height:256px;pointer-events:none;display:block}
+  .cross{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none}
+  .cross:before,.cross:after{content:"";position:absolute;background:var(--amber);
+        box-shadow:0 0 0 1px rgba(0,0,0,.75)}
+  .cross:before{width:34px;height:1.5px;left:-17px;top:-.75px}
+  .cross:after{width:1.5px;height:34px;left:-.75px;top:-17px}
+  .cross span{position:absolute;left:-7px;top:-7px;width:14px;height:14px;border-radius:50%;
+        border:1.5px solid var(--amber);box-shadow:0 0 0 1px rgba(0,0,0,.75)}
+  .mapzoom{position:absolute;right:8px;top:8px;display:flex;flex-direction:column}
+  .mapzoom button{width:32px;height:32px;margin-bottom:5px;border:1px solid #3A3833;
+        background:rgba(0,0,0,.72);color:#fff;font-family:var(--mono);font-size:17px;
+        line-height:1;cursor:pointer;border-radius:2px;padding:0}
+  .mapzoom button:hover{border-color:var(--amber);color:var(--amber)}
+  .mapbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+          padding:9px 11px;border-top:1px solid #262420;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .mapbar b{color:#fff;font-weight:500}
+  .mapbar .attr{font-size:9px;opacity:.65}
+  .mapbar .btn{margin:0}
+  .status{border:1px solid #262420;padding:12px 14px;margin-bottom:18px;font-family:var(--mono);font-size:11px;line-height:1.05}
+  .status .row{display:flex;justify-content:space-between;padding:4px 0;color:var(--muted)}
+  .status .row b{font-weight:500;color:#fff;letter-spacing:.03em}
+  .status .ok{color:#5FD3A0}
+  .status .bad{color:#E2624A}
+  .status .test{color:var(--amber)}
+  .warnbox{border:1px solid #5A2A20;background:#1A0D0A;padding:12px 14px;margin-bottom:18px;
+           font-family:var(--mono);font-size:11px;line-height:1.7;color:#E8A08C;display:none}
+  .warnbox.show{display:block}
+  .warnbox b{color:#fff;font-weight:500}
+  .presets{display:flex;flex-wrap:wrap}
+  .btn.small{font-size:13px;padding:6px 14px;margin:0 8px 0 0}
+  .btn.on{border-color:var(--amber);color:var(--amber)}
+  .actions{display:flex;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid #262420}
+  .btn{font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;
+       padding:9px 18px;border-radius:2px;border:1px solid #2C2A26;background:none;color:var(--line);cursor:pointer;margin:0 10px 10px 0}
+  .btn.primary{background:var(--amber);border-color:var(--amber);color:#000}
+  .btn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+  @media (max-aspect-ratio:1/1){
+    .frame{max-width:none;max-height:none}
+    .stage{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto;align-items:stretch}
+    .draw{order:1;min-height:0}
+    .info{order:2;padding-right:0;padding-top:calc(2 * var(--u))}
+    .callsign{font-size:calc(13 * var(--u))}
+    .apt{font-size:calc(8 * var(--u))}
+    .airline,.airline img{height:calc(6 * var(--u));max-height:calc(6 * var(--u))}
+    .metrics{grid-template-columns:repeat(2,1fr);row-gap:calc(2 * var(--u))}
+    .m .v{font-size:calc(7 * var(--u))}
+    .m .k{font-size:calc(1.9 * var(--u))}
+    .m .v em{font-size:calc(2.8 * var(--u))}
+    .head{font-size:calc(2 * var(--u))}
+    .typename{font-size:calc(2.4 * var(--u));margin-top:calc(2 * var(--u))}
+    .others{font-size:calc(1.9 * var(--u));height:calc(2.6 * var(--u))}
+    .apt span{font-size:calc(1.9 * var(--u));max-width:calc(34 * var(--u))}
+    .grid{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body class="empty">
+
+<div class="scene"><div class="frame">
+
+  <div class="head">
+    <span><span class="mark">FLIGHTSTER</span><span id="placeName">SKIVE</span></span>
+    <span class="r"><span class="clock" id="clock">--:--:--</span><span class="dot" id="dot"></span></span>
+  </div>
+
+  <div class="stage">
+    <div class="info">
+      <div class="airline"><img id="logo" alt=""><span class="fallback" id="logoFallback"></span></div>
+      <div class="callsign" id="callsign">—</div>
+      <div class="route" id="route"></div>
+      <div class="typename" id="typename"></div>
+    </div>
+    <div class="draw">
+      <svg id="silhouette" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+      <div class="photo" id="photoBox"><img id="photoImg" alt=""><span class="credit" id="photoCredit"></span></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="metrics" id="metrics"></div>
+    <div class="others" id="others"></div>
+  </div>
+
+</div></div>
+
+<div class="controls" id="controls">
+  <button id="btnFs" aria-label="Fuldsk&aelig;rm" title="Fuldsk&aelig;rm">
+    <svg id="fsIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/>
+    </svg>
+  </button>
+  <button id="gear" aria-label="Indstillinger" title="Indstillinger">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.3"/>
+      <circle cx="12" cy="12" r="6.1"/>
+      <path d="M18.00 12.00 L21.00 12.00 M16.24 16.24 L18.36 18.36 M12.00 18.00 L12.00 21.00 M7.76 16.24 L5.64 18.36 M6.00 12.00 L3.00 12.00 M7.76 7.76 L5.64 5.64 M12.00 6.00 L12.00 3.00 M16.24 7.76 L18.36 5.64"/>
+    </svg>
+  </button>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Indstillinger">
+  <div class="card">
+    <h2>Flightster</h2>
+    <p class="lede">Gemmes i adressen &mdash; bookmark den f&aelig;rdige ops&aelig;tning p&aring; tabletten. Ingen konto, ingen n&oslash;gle.</p>
+    <div class="warnbox" id="warnbox"></div>
+    <div class="status" id="status"></div>
+    <div class="mapwrap" id="mapwrap">
+      <div class="map" id="map">
+        <div class="tiles" id="tiles"></div>
+        <div class="cross"><span></span></div>
+        <div class="mapzoom">
+          <button id="zIn" aria-label="Zoom ind">+</button>
+          <button id="zOut" aria-label="Zoom ud">&minus;</button>
+        </div>
+      </div>
+      <div class="mapbar">
+        <span>Tr&aelig;k kortet &mdash; korset er dit punkt<br><b id="mapCoords">&ndash;</b></span>
+        <span class="attr">&copy; OpenStreetMap</span>
+        <button class="btn primary" id="btnMapUse">Brug dette punkt</button>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="field full"><label>R&aelig;kkevidde</label>
+        <div class="presets" id="presets">
+          <button class="btn small" data-r="12" data-e="15">Lille</button>
+          <button class="btn small" data-r="28" data-e="10">Standard</button>
+          <button class="btn small" data-r="90" data-e="2">Stor</button>
+        </div>
+        <span class="hint">Lille viser kun fly n&aelig;sten lige over dig. Stor tager alt inden for 90 km ned til 2&deg; over horisonten &mdash; brug den n&aring;r der er stille i luften.</span></div>
+      <div class="field"><label>Stednavn</label><input id="fPlace" type="text"></div>
+      <div class="field"><label>Opdatering (sek.)</label><input id="fInterval" type="number" min="2" max="120" step="1">
+        <span class="hint">Kilden till&aelig;der 1 kald i sekundet. K&oslash;rer du flere faner eller sk&aelig;rme p&aring; samme net, l&aelig;gger de sig sammen &mdash; s&aelig;t den h&oslash;jere. 5&ndash;8 er rigeligt.</span></div>
+      <div class="field"><label>Breddegrad</label><input id="fLat" type="number" step="0.0001"></div>
+      <div class="field"><label>L&aelig;ngdegrad</label><input id="fLon" type="number" step="0.0001"></div>
+      <div class="field"><label>Synsradius (km)</label><input id="fRadius" type="number" min="2" max="150" step="1">
+        <span class="hint">Vandret afstand. 25&ndash;30 km rammer marchh&oslash;jde.</span></div>
+      <div class="field"><label>Mindste h&oslash;jdevinkel (&deg;)</label><input id="fElev" type="number" min="0" max="60" step="1">
+        <span class="hint">Under ca. 10&deg; st&aring;r flyet i horisonten.</span></div>
+      <div class="field"><label>Datakilde</label>
+        <select id="fSource">
+          <option value="airplaneslive">airplanes.live</option>
+          <option value="adsblol">adsb.lol</option>
+          <option value="adsbfi">adsb.fi</option>
+        </select>
+        <span class="hint">airplanes.live er standard. Svarer den ikke, s&aring; prøv en af de andre &mdash; de leverer samme format.</span></div>
+      <div class="field"><label>Foto af flyet</label>
+        <select id="fPhotos">
+          <option value="1">Vis foto n&aring;r det findes</option>
+          <option value="0">Kun stregtegning</option>
+        </select>
+        <span class="hint">S&oslash;ger f&oslash;rst efter det pr&aelig;cise fly p&aring; hex og registrering, derefter et frit billede af samme type og selskab. Fotografen krediteres i hj&oslash;rnet.</span></div>
+      <div class="field"><label>Enheder</label>
+        <select id="fUnits">
+          <option value="metric">Meter og km/t</option>
+          <option value="avia">Fod og knob</option>
+        </select></div>
+      <div class="field full"><label>Proxy foran API (valgfri)</label><input id="fProxy" type="text" placeholder="http://192.168.1.50:8080/">
+        <span class="hint">N&oslash;dudgang hvis kaldet blokeres. Slutter adressen p&aring; <b>=</b> bliver m&aring;let automatisk kodet, s&aring; en offentlig omvej som
+        <b>https://api.allorigins.win/raw?url=</b> virker direkte. Egen videresender p&aring; dit net er mere stabil i l&aelig;ngden.</span></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="btnSave">Gem og genstart</button>
+      <button class="btn" id="btnMap">V&aelig;lg p&aring; kort</button>
+      <button class="btn" id="btnGeo">Brug min position</button>
+      <button class="btn" id="btnClearProxy">Ryd proxy</button>
+      <button class="btn" id="btnTest">Testfly</button>
+      <button class="btn" id="btnWake">Hold sk&aelig;rmen t&aelig;ndt</button>
+      <button class="btn" id="btnClose">Luk</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ================= opsætning ================= */
+  var DEF = { place:"Skive", lat:56.5670, lon:9.0280, radius:90, elev:2, interval:2,
+              source:"airplaneslive", units:"metric", photos:"1", proxy:"" };
+  var CFG = readHash();
+
+  function readHash(){
+    var c={},k; for(k in DEF){ if(DEF.hasOwnProperty(k)) c[k]=DEF[k]; }
+    var h=location.hash.replace(/^#/,""); if(!h) return c;
+    var p=h.split("&");
+    for(var i=0;i<p.length;i++){
+      var kv=p[i].split("="); if(kv.length!==2) continue;
+      var key=decodeURIComponent(kv[0]), val=decodeURIComponent(kv[1]);
+      if(!DEF.hasOwnProperty(key)) continue;
+      c[key]=(typeof DEF[key]==="number")?parseFloat(val):val;
+      if(typeof DEF[key]==="number" && isNaN(c[key])) c[key]=DEF[key];
+    }
+    return c;
+  }
+  function writeHash(){
+    var o=[],k; for(k in CFG){ if(CFG.hasOwnProperty(k)) o.push(encodeURIComponent(k)+"="+encodeURIComponent(CFG[k])); }
+    location.hash=o.join("&");
+  }
+
+  var SOURCES = {
+    adsblol:{label:"adsb.lol",host:"https://api.adsb.lol",
+      path:function(a,b,n){return "/v2/point/"+a+"/"+b+"/"+n;}},
+    airplaneslive:{label:"airplanes.live",host:"https://api.airplanes.live",
+      path:function(a,b,n){return "/v2/point/"+a+"/"+b+"/"+n;}},
+    adsbfi:{label:"adsb.fi",host:"https://opendata.adsb.fi",
+      path:function(a,b,n){return "/api/v2/lat/"+a+"/lon/"+b+"/dist/"+n;}}
+  };
+  var ADSBDB={key:"adsbdb",host:"https://api.adsbdb.com"};
+
+  /* To ruter til samme data:
+       eget dom\u00e6ne = /api/<kilde>/... omskrevet af _redirects. Samme-dom\u00e6ne, ingen CORS.
+       direkte         = lige til tjenesten. Virker kun hvis den sender CORS-headere.
+     Vi starter p\u00e5 eget dom\u00e6ne og falder selv tilbage hvis _redirects ikke er lagt op. */
+  var useVia = true;
+  function apiURL(key,host,path){
+    if(CFG.proxy) return viaProxy(host+path);
+    return useVia ? ("/api/"+key+path) : (host+path);
+  }
+
+  var ICAO2IATA = {
+    SAS:"SK",NOZ:"DY",NSZ:"DY",NAX:"DY",IBK:"DY",DLH:"LH",CLH:"CL",KLM:"KL",AFR:"AF",BAW:"BA",SHT:"BA",
+    EZY:"U2",EZS:"DS",RYR:"FR",RUK:"FR",WZZ:"W6",WMT:"W4",NOR:"D8",THY:"TK",SWR:"LX",AUA:"OS",BEL:"SN",
+    TAP:"TP",IBE:"IB",VLG:"VY",AEA:"UX",FIN:"AY",AAL:"AA",UAL:"UA",DAL:"DL",ACA:"AC",UAE:"EK",QTR:"QR",
+    ETD:"EY",SIA:"SQ",CPA:"CX",ANA:"NH",JAL:"JL",KAL:"KE",AAR:"OZ",CCA:"CA",CES:"MU",CSN:"CZ",ELY:"LY",
+    ETH:"ET",QFA:"QF",ANZ:"NZ",ICE:"FI",NLY:"NY",CFG:"DE",TUI:"X3",TFL:"HV",TRA:"HV",JAF:"TB",LOT:"LO",
+    CSA:"OK",GEC:"LH",BOX:"LH",FDX:"FX",UPS:"5X",GTI:"5Y",CLX:"CV",MSR:"MS",RJA:"RJ",SVA:"SV",PGT:"PC",
+    ABY:"G9",AFL:"SU",BCS:"QY",EXS:"LS",SDR:"6B"
+  };
+
+  /* Slutter proxy-pr\u00e6fikset p\u00e5 "=", er det en ?url=-stil proxy og m\u00e5let skal kodes */
+  function viaProxy(url){
+    var pre=CFG.proxy||"";
+    if(!pre) return url;
+    return (pre.charAt(pre.length-1)==="=") ? pre+encodeURIComponent(url) : pre+url;
+  }
+
+  var COMPASS=["N","NNØ","NØ","ØNØ","Ø","ØSØ","SØ","SSØ","S","SSV","SV","VSV","V","VNV","NV","NNV"];
+  function compass(d){ return COMPASS[Math.round(((d%360)+360)%360/22.5)%16]; }
+  function nf(n,d){ if(n===null||n===undefined||isNaN(n)) return "–";
+    return n.toLocaleString("da-DK",{minimumFractionDigits:d||0,maximumFractionDigits:d||0}); }
+
+  /* ================= flytyper =================
+     L = længde (m), S = spændvidde (m), sweep = vingepilning (grader),
+     eng = motorer, mount = wing|rear|nose, tail = std|t,
+     tips = none|winglet|sharklet|fence|raked, deck = ekstra dæklinje (747/A380) */
+  function AC(name,L,S,sweep,eng,mount,tail,tips,deck){
+    return {name:name,L:L,S:S,sweep:sweep,eng:eng,mount:mount,tail:tail,tips:tips||"none",deck:!!deck};
+  }
+  var TYPES = {
+    A318:AC("Airbus A318",31.4,34.1,25,2,"wing","std","sharklet"),
+    A319:AC("Airbus A319",33.8,35.8,25,2,"wing","std","sharklet"),
+    A320:AC("Airbus A320",37.6,35.8,25,2,"wing","std","fence"),
+    A321:AC("Airbus A321",44.5,35.8,25,2,"wing","std","sharklet"),
+    A19N:AC("Airbus A319neo",33.8,35.8,25,2,"wing","std","sharklet"),
+    A20N:AC("Airbus A320neo",37.6,35.8,25,2,"wing","std","sharklet"),
+    A21N:AC("Airbus A321neo",44.5,35.8,25,2,"wing","std","sharklet"),
+    A332:AC("Airbus A330-200",58.8,60.3,30,2,"wing","std","winglet"),
+    A333:AC("Airbus A330-300",63.7,60.3,30,2,"wing","std","winglet"),
+    A339:AC("Airbus A330-900neo",63.7,64.0,30,2,"wing","std","raked"),
+    A343:AC("Airbus A340-300",63.7,60.3,30,4,"wing","std","winglet"),
+    A346:AC("Airbus A340-600",75.3,63.5,30,4,"wing","std","winglet"),
+    A359:AC("Airbus A350-900",66.8,64.8,31,2,"wing","std","raked"),
+    A35K:AC("Airbus A350-1000",73.8,64.8,31,2,"wing","std","raked"),
+    A388:AC("Airbus A380-800",72.7,79.8,33,4,"wing","std","fence",true),
+    B733:AC("Boeing 737-300",33.4,28.9,25,2,"wing","std","none"),
+    B735:AC("Boeing 737-500",31.0,28.9,25,2,"wing","std","none"),
+    B736:AC("Boeing 737-600",31.2,34.3,25,2,"wing","std","winglet"),
+    B737:AC("Boeing 737-700",33.6,34.3,25,2,"wing","std","winglet"),
+    B738:AC("Boeing 737-800",39.5,34.3,25,2,"wing","std","winglet"),
+    B739:AC("Boeing 737-900",42.1,34.3,25,2,"wing","std","winglet"),
+    B38M:AC("Boeing 737 MAX 8",39.5,35.9,25,2,"wing","std","raked"),
+    B39M:AC("Boeing 737 MAX 9",42.2,35.9,25,2,"wing","std","raked"),
+    B3XM:AC("Boeing 737 MAX 10",43.8,35.9,25,2,"wing","std","raked"),
+    B752:AC("Boeing 757-200",47.3,38.0,25,2,"wing","std","winglet"),
+    B753:AC("Boeing 757-300",54.4,38.0,25,2,"wing","std","winglet"),
+    B762:AC("Boeing 767-200",48.5,47.6,31,2,"wing","std","winglet"),
+    B763:AC("Boeing 767-300",54.9,47.6,31,2,"wing","std","winglet"),
+    B764:AC("Boeing 767-400",61.4,51.9,31,2,"wing","std","raked"),
+    B772:AC("Boeing 777-200",63.7,60.9,31,2,"wing","std","raked"),
+    B77L:AC("Boeing 777-200LR",63.7,64.8,31,2,"wing","std","raked"),
+    B77W:AC("Boeing 777-300ER",73.9,64.8,31,2,"wing","std","raked"),
+    B778:AC("Boeing 777-8",69.8,71.8,32,2,"wing","std","raked"),
+    B779:AC("Boeing 777-9",76.7,71.8,32,2,"wing","std","raked"),
+    B788:AC("Boeing 787-8",56.7,60.1,32,2,"wing","std","raked"),
+    B789:AC("Boeing 787-9",62.8,60.1,32,2,"wing","std","raked"),
+    B78X:AC("Boeing 787-10",68.3,60.1,32,2,"wing","std","raked"),
+    B741:AC("Boeing 747-100",70.6,59.6,37,4,"wing","std","none",true),
+    B742:AC("Boeing 747-200",70.6,59.6,37,4,"wing","std","none",true),
+    B744:AC("Boeing 747-400",70.6,64.4,37,4,"wing","std","winglet",true),
+    B748:AC("Boeing 747-8",76.3,68.4,37,4,"wing","std","raked",true),
+    B74F:AC("Boeing 747 Freighter",70.6,64.4,37,4,"wing","std","winglet",true),
+    C152:AC("Cessna 152",7.3,10.2,0,1,"nose","std","none"),
+    C162:AC("Cessna 162 Skycatcher",6.9,9.1,0,1,"nose","std","none"),
+    C172:AC("Cessna 172 Skyhawk",8.3,11.0,0,1,"nose","std","none"),
+    C77R:AC("Cessna 177 Cardinal",8.3,10.8,0,1,"nose","std","none"),
+    C182:AC("Cessna 182 Skylane",8.8,11.0,0,1,"nose","std","none"),
+    C206:AC("Cessna 206 Stationair",8.6,11.0,0,1,"nose","std","none"),
+    C210:AC("Cessna 210 Centurion",8.6,11.2,0,1,"nose","std","none"),
+    C208:AC("Cessna 208 Caravan",11.5,15.9,0,1,"nose","std","none"),
+    C25A:AC("Cessna Citation CJ2",14.5,15.2,10,2,"rear","t","none"),
+    C25B:AC("Cessna Citation CJ3",15.6,16.3,10,2,"rear","t","none"),
+    C25C:AC("Cessna Citation CJ4",16.3,15.5,15,2,"rear","t","none"),
+    C56X:AC("Cessna Citation Excel",16.0,17.2,10,2,"rear","t","none"),
+    C68A:AC("Cessna Citation Latitude",18.9,22.0,12,2,"rear","t","winglet"),
+    C700:AC("Cessna Citation Longitude",22.3,20.9,20,2,"rear","t","winglet"),
+    E170:AC("Embraer 170",29.9,26.0,25,2,"wing","std","winglet"),
+    E75L:AC("Embraer 175",31.7,28.7,25,2,"wing","std","winglet"),
+    E190:AC("Embraer 190",36.2,28.7,25,2,"wing","std","winglet"),
+    E195:AC("Embraer 195",38.7,28.7,25,2,"wing","std","winglet"),
+    E290:AC("Embraer E190-E2",36.2,33.7,25,2,"wing","std","raked"),
+    E295:AC("Embraer E195-E2",41.5,35.1,25,2,"wing","std","raked"),
+    CRJ2:AC("Bombardier CRJ200",26.8,21.2,25,2,"rear","t","winglet"),
+    CRJ7:AC("Bombardier CRJ700",32.3,23.2,25,2,"rear","t","winglet"),
+    CRJ9:AC("Bombardier CRJ900",36.4,24.9,25,2,"rear","t","winglet"),
+    CRJX:AC("Bombardier CRJ1000",39.1,26.2,25,2,"rear","t","winglet"),
+    BCS1:AC("Airbus A220-100",35.0,35.1,25,2,"wing","std","raked"),
+    BCS3:AC("Airbus A220-300",38.7,35.1,25,2,"wing","std","raked"),
+    DH8D:AC("De Havilland Dash 8 Q400",32.8,28.4,0,2,"wing","t","none"),
+    AT45:AC("ATR 42-500",22.7,24.6,0,2,"wing","t","none"),
+    AT72:AC("ATR 72",27.2,27.1,0,2,"wing","t","none"),
+    AT76:AC("ATR 72-600",27.2,27.1,0,2,"wing","t","none"),
+    SF34:AC("Saab 340",19.7,21.4,0,2,"wing","std","none"),
+    PC12:AC("Pilatus PC-12",14.4,16.3,0,1,"nose","t","winglet"),
+    TBM9:AC("Daher TBM 900",10.7,12.8,0,1,"nose","std","winglet"),
+    SR22:AC("Cirrus SR22",7.9,11.7,0,1,"nose","std","none"),
+    DA40:AC("Diamond DA40",8.1,11.9,0,1,"nose","t","none"),
+    DA42:AC("Diamond DA42",8.6,13.4,0,2,"wing","t","none"),
+    P28A:AC("Piper PA-28 Cherokee",7.3,10.7,0,1,"nose","std","none"),
+    BE20:AC("Beechcraft King Air 200",13.3,16.6,0,2,"wing","t","none"),
+    GLF5:AC("Gulfstream G550",29.4,28.5,27,2,"rear","t","winglet"),
+    GLEX:AC("Bombardier Global Express",30.3,28.7,27,2,"rear","t","winglet"),
+    FA7X:AC("Dassault Falcon 7X",23.4,26.2,25,3,"rear","t","winglet"),
+    A400:AC("Airbus A400M Atlas",45.1,42.4,0,4,"wing","t","none"),
+    C130:AC("Lockheed C-130 Hercules",29.8,40.4,0,4,"wing","std","none"),
+    B463:AC("BAe 146-300",30.9,26.2,15,4,"wing","t","none")
+  };
+  function typeSpec(code){
+    if(!code) return null;
+    var c=String(code).toUpperCase().replace(/[^A-Z0-9]/g,"");
+    if(TYPES[c]) return TYPES[c];
+    if(/^A31|^A32/.test(c)) return TYPES.A320;
+    if(/^A33/.test(c)) return TYPES.A333;
+    if(/^A34/.test(c)) return TYPES.A343;
+    if(/^A35/.test(c)) return TYPES.A359;
+    if(/^A38/.test(c)) return TYPES.A388;
+    if(/^B74/.test(c)) return TYPES.B744;
+    if(/^B73/.test(c)) return TYPES.B738;
+    if(/^B75/.test(c)) return TYPES.B752;
+    if(/^B76/.test(c)) return TYPES.B763;
+    if(/^B77/.test(c)) return TYPES.B772;
+    if(/^C1[5-9]|^C2[01]/.test(c)) return TYPES.C172;
+    if(/^C20/.test(c)) return TYPES.C208;
+    if(/^C[2567]/.test(c)) return TYPES.C56X;
+    if(/^E1[79]|^E29|^E75/.test(c)) return TYPES.E190;
+    if(/^CRJ/.test(c)) return TYPES.CRJ9;
+    if(/^AT[47]/.test(c)) return TYPES.AT72;
+    if(/^DH8/.test(c)) return TYPES.DH8D;
+    if(/^BCS/.test(c)) return TYPES.BCS3;
+    if(/^GL|^GA|^F900|^FA/.test(c)) return TYPES.GLF5;
+    return null;
+  }
+
+  /* ============ stregtegning: top og profil, næse mod højre ============ */
+  var HIGHWING={C152:1,C162:1,C172:1,C77R:1,C182:1,C206:1,C210:1,C208:1,
+                AT45:1,AT72:1,AT76:1,DH8D:1,C130:1,A400:1,B463:1,SF34:1};
+  (function(){ for(var k in HIGHWING){ if(TYPES[k]) TYPES[k].hw=true; } })();
+
+  function geom(sp){
+    var L=sp.L,S=sp.S,g={};
+    g.fw=Math.max(0.8,S*0.100); if(sp.deck) g.fw*=1.08;
+    g.prop=(sp.mount==="nose")||(sp.sweep===0&&sp.mount==="wing");
+    g.wx=(sp.mount==="nose")?L*0.26:L*0.36;
+    g.rootC=(sp.sweep>0)?S*0.19:S*0.125;
+    g.tipC=g.rootC*(sp.sweep>0?0.36:0.58);
+    g.tan=Math.tan((sp.sweep>0?sp.sweep:4)*Math.PI/180);
+    g.semi=S/2;
+    g.finH=g.prop ? L*(sp.tail==="t"?0.22:0.17) : L*(sp.tail==="t"?0.24:0.20);
+    g.nw=g.prop?g.fw*0.42:g.fw*0.62;
+    g.nl=g.prop?L*0.17:g.nw*1.85;
+    return g;
+  }
+
+  /* b\u00e6replan set fra kanten: rund forkant, tykkest ca. 30 % inde, skarp bagkant */
+  function airfoil(x0,y0,c,t,camber,X,Y){
+    var tU=t*(0.5+camber), tL=t*(0.5-camber), yTE=y0-c*0.030*(camber>0?1:0);
+    return '<path d="M'+X(x0)+','+Y(y0)+
+      ' C'+X(x0+c*0.05)+','+Y(y0-tU*0.86)+' '+X(x0+c*0.16)+','+Y(y0-tU)+' '+X(x0+c*0.30)+','+Y(y0-tU)+
+      ' C'+X(x0+c*0.54)+','+Y(y0-tU*0.90)+' '+X(x0+c*0.80)+','+Y(y0-tU*0.48)+' '+X(x0+c)+','+Y(yTE)+
+      ' C'+X(x0+c*0.74)+','+Y(y0+tL*0.32)+' '+X(x0+c*0.44)+','+Y(y0+tL*0.86)+' '+X(x0+c*0.24)+','+Y(y0+tL)+
+      ' C'+X(x0+c*0.11)+','+Y(y0+tL*0.92)+' '+X(x0+c*0.03)+','+Y(y0+tL*0.55)+' '+X(x0)+','+Y(y0)+' Z"/>';
+  }
+
+  /* motorgondol: buttet indl\u00f8b, bredest lige bag l\u00e6ben, smallere mod udst\u00f8dningen */
+  function nacelle(x0,c,nl,nw,X,Y){
+    return '<path d="M'+X(x0+nl*0.17)+','+Y(c-nw*0.50)+
+      ' C'+X(x0-nl*0.03)+','+Y(c-nw*0.43)+' '+X(x0-nl*0.03)+','+Y(c+nw*0.43)+' '+X(x0+nl*0.17)+','+Y(c+nw*0.50)+
+      ' C'+X(x0+nl*0.46)+','+Y(c+nw*0.50)+' '+X(x0+nl*0.76)+','+Y(c+nw*0.40)+' '+X(x0+nl)+','+Y(c+nw*0.25)+
+      ' L'+X(x0+nl)+','+Y(c-nw*0.25)+
+      ' C'+X(x0+nl*0.76)+','+Y(c-nw*0.40)+' '+X(x0+nl*0.46)+','+Y(c-nw*0.50)+' '+X(x0+nl*0.17)+','+Y(c-nw*0.50)+' Z"/>';
+  }
+
+  function topView(sp,g,X,Y){
+    var L=sp.L,S=sp.S,fw=g.fw,semi=g.semi,tan=g.tan,wx=g.wx,rootC=g.rootC,tipC=g.tipC;
+    var engines=[],wings=[],body=[],tail=[],s,e;
+
+    if(sp.mount==="wing"&&sp.eng>=2){
+      var pos=(sp.eng>=4)?[0.34,0.63]:[0.36];
+      for(e=0;e<pos.length;e++){
+        for(s=-1;s<=1;s+=2){
+          var yE=s*semi*pos[e], xLE=wx+(Math.abs(yE)-fw*0.5)*tan;
+          var x0=xLE-g.nl*(g.prop?0.50:0.62);
+          engines.push(nacelle(x0,yE,g.nl,g.nw,X,Y));
+          if(g.prop){
+            var pd=S*0.15;
+            engines.push('<path class="accent" d="M'+X(x0-L*0.004)+','+Y(yE-pd/2)+
+                         ' L'+X(x0-L*0.004)+','+Y(yE+pd/2)+'"/>');
+          }
+        }
+      }
+    }
+
+    var raked=(sp.tips==="raked")?semi*0.035:0, kinkY=semi*0.35;
+    for(s=-1;s<=1;s+=2){
+      var yT=s*semi, yR=s*fw*0.46, yK=s*kinkY;
+      var leT=wx+(semi-fw*0.5)*tan+raked;
+      var leK=wx+(kinkY-fw*0.5)*tan;
+      var teR=wx+rootC;
+      var teK=leK+rootC*(sp.sweep>0?0.62:0.86);
+      wings.push('<path d="M'+X(wx)+','+Y(yR)+' L'+X(leT)+','+Y(yT)+
+                 ' L'+X(leT+tipC*0.55)+','+Y(yT)+' L'+X(leT+tipC)+','+Y(yT-s*semi*0.012)+
+                 ' L'+X(teK)+','+Y(yK)+' L'+X(teR)+','+Y(yR)+' Z"/>');
+      if(sp.tips==="winglet"||sp.tips==="sharklet"||sp.tips==="fence"){
+        var t=(sp.tips==="fence")?semi*0.030:semi*0.048;
+        wings.push('<path class="thin" d="M'+X(leT)+','+Y(yT)+' L'+X(leT+tipC*0.5)+','+Y(yT+s*t)+'"/>');
+      }
+    }
+
+    body.push('<path d="M'+X(0)+','+Y(0)+
+      ' C'+X(L*0.035)+','+Y(-fw*0.40)+' '+X(L*0.09)+','+Y(-fw*0.5)+' '+X(L*0.16)+','+Y(-fw*0.5)+
+      ' L'+X(L*0.73)+','+Y(-fw*0.5)+
+      ' C'+X(L*0.85)+','+Y(-fw*0.47)+' '+X(L*0.94)+','+Y(-fw*0.30)+' '+X(L)+','+Y(-fw*0.06)+
+      ' L'+X(L)+','+Y(fw*0.06)+
+      ' C'+X(L*0.94)+','+Y(fw*0.30)+' '+X(L*0.85)+','+Y(fw*0.47)+' '+X(L*0.73)+','+Y(fw*0.5)+
+      ' L'+X(L*0.16)+','+Y(fw*0.5)+
+      ' C'+X(L*0.09)+','+Y(fw*0.5)+' '+X(L*0.035)+','+Y(fw*0.40)+' '+X(0)+','+Y(0)+' Z"/>');
+    for(s=-1;s<=1;s+=2){
+      body.push('<path class="thin" d="M'+X(L*0.066)+','+Y(s*fw*0.055)+' L'+X(L*0.090)+','+Y(s*fw*0.265)+
+                ' L'+X(L*0.158)+','+Y(s*fw*0.375)+' L'+X(L*0.162)+','+Y(s*fw*0.125)+' Z"/>');
+    }
+    if(sp.deck){
+      body.push('<path class="thin" d="M'+X(L*0.11)+','+Y(-fw*0.30)+' L'+X(L*0.44)+','+Y(-fw*0.30)+
+                ' M'+X(L*0.11)+','+Y(fw*0.30)+' L'+X(L*0.44)+','+Y(fw*0.30)+'"/>');
+    }
+    if(sp.mount==="rear"){
+      var nwr=fw*0.58, nlr=fw*0.58*2.0;
+      for(s=-1;s<=1;s+=2){
+        var yRr=s*(fw*0.46+nwr*0.52);
+        body.push(nacelle(L*0.655,yRr,nlr,nwr,X,Y));
+        body.push('<path class="thin" d="M'+X(L*0.655+nlr*0.4)+','+Y(yRr-s*nwr*0.5)+
+                  ' L'+X(L*0.655+nlr*0.7)+','+Y(s*fw*0.44)+'"/>');
+      }
+    }
+    if(sp.mount==="nose"){
+      var pdn=S*0.085;
+      body.push('<path class="accent" d="M'+X(-L*0.030)+','+Y(-pdn)+' L'+X(-L*0.030)+','+Y(pdn)+'"/>');
+    }
+
+    var hx=(sp.tail==="t")?L*0.94:L*0.845;
+    var hs=S*0.17, hRoot=g.prop?L*0.13:L*0.11, hTip=hRoot*0.48;
+    var hSw=hs*Math.tan(((sp.sweep>0?sp.sweep+6:10))*Math.PI/180);
+    for(s=-1;s<=1;s+=2){
+      tail.push('<path d="M'+X(hx)+','+Y(s*fw*0.24)+' L'+X(hx+hSw)+','+Y(s*hs)+
+                ' L'+X(hx+hSw+hTip)+','+Y(s*hs)+' L'+X(hx+hRoot)+','+Y(s*fw*0.24)+' Z"/>');
+    }
+    var fx0=L*0.80, fx1=L*((sp.tail==="t")?1.02:1.0);
+    tail.push(airfoil(fx0,0,fx1-fx0,fw*0.20,0,X,Y));
+
+    return sp.hw ? engines.concat(body,wings,tail).join("")
+                 : engines.concat(wings,body,tail).join("");
+  }
+
+  function sideView(sp,g,X,Y){
+    var L=sp.L,S=sp.S,fw=g.fw,finH=g.finH,wx=g.wx,rootC=g.rootC,hw=!!sp.hw,d=[];
+    d.push('<path d="M'+X(0)+','+Y(fw*0.10)+
+      ' C'+X(L*0.02)+','+Y(-fw*0.22)+' '+X(L*0.07)+','+Y(-fw*0.5)+' '+X(L*0.155)+','+Y(-fw*0.5)+
+      ' L'+X(L*0.78)+','+Y(-fw*0.5)+
+      ' C'+X(L*0.87)+','+Y(-fw*0.5)+' '+X(L*0.95)+','+Y(-fw*0.44)+' '+X(L)+','+Y(-fw*0.30)+
+      ' C'+X(L*0.92)+','+Y(-fw*0.02)+' '+X(L*0.85)+','+Y(fw*0.30)+' '+X(L*0.72)+','+Y(fw*0.5)+
+      ' L'+X(L*0.15)+','+Y(fw*0.5)+
+      ' C'+X(L*0.06)+','+Y(fw*0.5)+' '+X(L*0.015)+','+Y(fw*0.36)+' '+X(0)+','+Y(fw*0.10)+' Z"/>');
+    d.push('<path class="thin" d="M'+X(L*0.062)+','+Y(-fw*0.175)+' L'+X(L*0.086)+','+Y(-fw*0.360)+
+           ' L'+X(L*0.158)+','+Y(-fw*0.400)+' L'+X(L*0.162)+','+Y(-fw*0.235)+' Z'+
+           ' M'+X(L*0.104)+','+Y(-fw*0.370)+' L'+X(L*0.109)+','+Y(-fw*0.205)+
+           ' M'+X(L*0.131)+','+Y(-fw*0.385)+' L'+X(L*0.135)+','+Y(-fw*0.220)+'"/>');
+    if(L>18){
+      var step=L*0.028, x=L*0.16, r=fw*0.035;
+      while(x<L*0.76){ d.push('<circle cx="'+X(x)+'" cy="'+Y(-fw*0.10)+'" r="'+r.toFixed(2)+'"/>'); x+=step; }
+      if(sp.deck){
+        x=L*0.13;
+        while(x<L*0.44){ d.push('<circle cx="'+X(x)+'" cy="'+Y(-fw*0.34)+'" r="'+r.toFixed(2)+'"/>'); x+=step; }
+      }
+    }
+    d.push('<path d="M'+X(L*0.745)+','+Y(-fw*0.48)+' L'+X(L*0.925)+','+Y(-fw*0.5-finH)+
+           ' L'+X(L*1.005)+','+Y(-fw*0.5-finH*0.95)+' L'+X(L*0.99)+','+Y(-fw*0.34)+' Z"/>');
+    if(sp.tail==="t"){
+      var ty=-fw*0.5-finH*0.98;
+      d.push(airfoil(L*0.885,ty,L*0.145,L*0.145*0.15,0.10,X,Y));
+    } else {
+      d.push(airfoil(L*0.845,-fw*0.20,L*0.155,L*0.155*0.15,0.10,X,Y));
+    }
+    var wy;
+    if(hw){
+      wy=-fw*0.50;
+      d.push(airfoil(wx-rootC*0.05,wy,rootC*1.30,rootC*0.24,0.15,X,Y));
+      d.push('<path class="thin" d="M'+X(wx+rootC*0.55)+','+Y(wy)+' L'+X(wx+rootC*0.95)+','+Y(fw*0.45)+'"/>');
+    } else {
+      wy=fw*0.44;
+      d.push(airfoil(wx,wy,rootC*1.15,rootC*0.20,0.15,X,Y));
+    }
+    var nw=g.nw, nl=g.nl, x0, ny;
+    if(sp.mount==="wing"&&sp.eng>=2){
+      if(g.prop){
+        ny=hw?(-fw*0.62):(fw*0.10); x0=wx-nl*0.45;
+        d.push(nacelle(x0,ny,nl,nw*0.92,X,Y));
+        var pr=S*0.075;
+        d.push('<path class="accent" d="M'+X(x0-L*0.008)+','+Y(ny-pr)+' L'+X(x0-L*0.008)+','+Y(ny+pr)+'"/>');
+      } else {
+        var tL=rootC*0.20*0.35;
+        ny=fw*0.72; x0=wx-nl*0.62;
+        d.push('<path d="M'+X(x0+nl*0.52)+','+Y(ny-nw*0.44)+' L'+X(wx+rootC*0.10)+','+Y(wy+tL*0.75)+
+               ' L'+X(wx+rootC*0.42)+','+Y(wy+tL*0.55)+' L'+X(x0+nl*0.99)+','+Y(ny-nw*0.20)+' Z"/>');
+        d.push(nacelle(x0,ny,nl,nw,X,Y));
+      }
+    }
+    if(sp.mount==="rear"){ d.push(nacelle(L*0.655,-fw*0.40,fw*0.58*2.0,fw*0.58,X,Y)); }
+    if(sp.mount==="nose"){
+      var prn=S*0.085;
+      d.push('<path d="M'+X(0)+','+Y(-fw*0.13)+' L'+X(-L*0.028)+','+Y(0)+' L'+X(0)+','+Y(fw*0.13)+' Z"/>');
+      d.push('<path class="accent" d="M'+X(-L*0.030)+','+Y(-prn)+' L'+X(-L*0.030)+','+Y(prn)+'"/>');
+    }
+    return d.join("");
+  }
+
+
+  function silhouette(sp){
+    var L=sp.L,S=sp.S,g=geom(sp);
+    var gap=L*0.10;
+    var sideH=g.fw+g.finH+g.fw*0.6;
+    var W=Math.max(L,S)*1.06;
+    var H=S+gap+sideH;
+    var ox=(W-L)/2, yTop=S/2, ySide=S+gap+g.finH+g.fw*0.5;
+    function X(x){ return (ox+x).toFixed(2); }
+    var out = '<g>'+topView(sp,g,X,function(y){ return (yTop+y).toFixed(2); })+'</g>'+
+              '<g>'+sideView(sp,g,X,function(y){ return (ySide+y).toFixed(2); })+'</g>';
+    var svg=document.getElementById("silhouette");
+    svg.setAttribute("viewBox","0 0 "+W.toFixed(1)+" "+H.toFixed(1));
+    return out;
+  }
+
+  /* ================= tilstand ================= */
+  var STATE={planes:[]};
+  var routeCache={}, routeQueue=[], routeBusy=false;
+  var lastGood=0, failStreak=0, timer=null, shownHex=null, statusTimer=null;
+  var nextTry=0, backoff=0;
+  var ORIGIN_OK = (location.protocol==="http:" || location.protocol==="https:");
+  var DIAG={ok:false, msg:"venter p\u00e5 f\u00f8rste svar", code:null, raw:0, inRange:0};
+
+  /* ---- testfly: gennemgang af nogle typiske typer ---- */
+  var TESTS=[
+    {hex:"TEST0",cs:"SAS1234",reg:"OY-KAV",type:"A20N",altFt:36000,altM:10973,gs:451,ground:9.4,elev:49,bearing:205},
+    {hex:"TEST1",cs:"KLM785",reg:"PH-BVK",type:"B789",altFt:38000,altM:11582,gs:478,ground:16.8,elev:35,bearing:118},
+    {hex:"TEST2",cs:"BOX412",reg:"D-ABYT",type:"B748",altFt:34000,altM:10363,gs:492,ground:22.1,elev:25,bearing:295},
+    {hex:"TEST3",cs:"OY-JEP",reg:"OY-JEP",type:"C172",altFt:2500,altM:762,gs:98,ground:1.9,elev:22,bearing:40},
+    {hex:"TEST4",cs:"NJE711",reg:"CS-DXP",type:"C56X",altFt:19000,altM:5791,gs:362,ground:7.2,elev:39,bearing:340}
+  ];
+  var testIndex=-1;
+  for(var ti=0;ti<TESTS.length;ti++) TESTS[ti].inRange=true;
+  var TESTROUTES={
+    SAS1234:{ok:true,from:{iata_code:"CPH",municipality:"K\u00f8benhavn"},to:{iata_code:"ARN",municipality:"Stockholm"},airline:{name:"Scandinavian Airlines",iata:"SK"}},
+    KLM785:{ok:true,from:{iata_code:"AMS",municipality:"Amsterdam"},to:{iata_code:"YYZ",municipality:"Toronto"},airline:{name:"KLM",iata:"KL"}},
+    BOX412:{ok:true,from:{iata_code:"FRA",municipality:"Frankfurt"},to:{iata_code:"ORD",municipality:"Chicago"},airline:{name:"Lufthansa Cargo",iata:"LH"}},
+    NJE711:{ok:true,from:{iata_code:"LIS",municipality:"Lissabon"},to:{iata_code:"BLL",municipality:"Billund"},airline:{name:"NetJets Europe",iata:null}}
+  };
+
+  function queueRoute(cs){
+    if(!cs || routeCache.hasOwnProperty(cs) || routeQueue.indexOf(cs)>=0) return;
+    routeQueue.push(cs); pumpRoutes();
+  }
+  function pumpRoutes(){
+    if(routeBusy || !routeQueue.length) return;
+    routeBusy=true;
+    var cs=routeQueue.shift();
+    fetch(apiURL(ADSBDB.key,ADSBDB.host,"/v0/callsign/"+encodeURIComponent(cs)),{cache:"no-store"})
+      .then(function(r){ if(!r.ok) throw new Error("x"); return r.json(); })
+      .then(function(j){
+        var fr=(j&&j.response)?j.response.flightroute:null;
+        routeCache[cs]=(fr&&fr.origin&&fr.destination)
+          ? {ok:true,from:fr.origin,to:fr.destination,airline:fr.airline||null} : null;
+      })
+      .catch(function(){ routeCache[cs]=null; })
+      .then(function(){ routeBusy=false; setTimeout(pumpRoutes,450); shownHex=null; render(); });
+  }
+
+  function iataFor(a){
+    var r=routeCache[a.cs];
+    if(r&&r.airline&&r.airline.iata) return r.airline.iata;
+    var pre=(a.cs||"").substring(0,3).toUpperCase();
+    return ICAO2IATA[pre]||null;
+  }
+  function setLogo(a){
+    var img=document.getElementById("logo"), fb=document.getElementById("logoFallback");
+    var r=routeCache[a.cs], name=(r&&r.airline&&r.airline.name)?r.airline.name:null;
+    var iata=iataFor(a);
+    img.className=""; img.removeAttribute("src");
+    fb.textContent=name||"";
+    if(!iata) return;
+    var tries=["https://images.kiwi.com/airlines/64/"+iata+".png",
+               "https://pics.avs.io/120/40/"+iata+".png"], n=0;
+    img.onerror=function(){ n++; if(n<tries.length) img.src=tries[n]; else img.className=""; };
+    img.onload=function(){ img.className="on"; fb.textContent=""; };
+    img.alt=name||iata;
+    img.src=tries[0];
+  }
+
+  /* ================= foto af flyet =================
+     1) Planespotters p\u00e5 hex, s\u00e5 registrering \u2014 det pr\u00e6cise fly.
+     2) Wikimedia Commons p\u00e5 selskab + type \u2014 frit licenseret, samme model.
+     Intet gemmes hos os; billedet vises fra kilden med kredit, som vilk\u00e5rene kr\u00e6ver. */
+  var photoCache={}, photoMeta={}, photoQueue=[], photoBusy=false;
+
+  function photoKey(a){ return a.hex||a.cs; }
+
+  function queuePhoto(a){
+    if(CFG.photos!=="1" || !a) return;
+    var k=photoKey(a);
+    if(!k || photoCache.hasOwnProperty(k) || photoQueue.indexOf(k)>=0) return;
+    photoMeta[k]={hex:a.hex,reg:a.reg,type:a.type,cs:a.cs};
+    photoQueue.push(k);
+    pumpPhotos();
+  }
+
+  function pumpPhotos(){
+    if(photoBusy || !photoQueue.length) return;
+    photoBusy=true;
+    var k=photoQueue.shift(), m=photoMeta[k]||{};
+    spotters(m.hex,"hex")
+      .then(function(r){ return r || (m.reg ? spotters(m.reg,"reg") : null); })
+      .then(function(r){ return r || commonsPhoto(m); })
+      .then(function(r){ photoCache[k]=r||null; })
+      .catch(function(){ photoCache[k]=null; })
+      .then(function(){ photoBusy=false; setTimeout(pumpPhotos,300); shownHex=null; render(); });
+  }
+
+  function spotters(id,kind){
+    if(!id) return Promise.resolve(null);
+    var u=apiURL("planespotters","https://api.planespotters.net",
+                 "/pub/photos/"+kind+"/"+encodeURIComponent(String(id).trim()));
+    return fetch(u,{cache:"force-cache"})
+      .then(function(r){ if(!r.ok) throw new Error("x"); return r.json(); })
+      .then(function(j){
+        var ph=(j&&j.photos&&j.photos.length)?j.photos[0]:null;
+        if(!ph) return null;
+        var src=(ph.thumbnail_large&&ph.thumbnail_large.src)||(ph.thumbnail&&ph.thumbnail.src);
+        if(!src) return null;
+        return { src:src, credit:"\u00a9 "+(ph.photographer||"ukendt")+" / Planespotters.net",
+                 link:ph.link||null, exact:true };
+      })
+      .catch(function(){ return null; });
+  }
+
+  function commonsPhoto(m){
+    var r=routeCache[m.cs], sp=typeSpec(m.type);
+    var airline=(r&&r.airline&&r.airline.name)?r.airline.name:"";
+    var model=sp?sp.name:(m.type||"");
+    if(!airline && !model) return Promise.resolve(null);
+    var q=(airline+" "+model+" aircraft").replace(/\s+/g," ");
+    var u=apiURL("commons","https://commons.wikimedia.org",
+      "/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=1"+
+      "&gsrsearch="+encodeURIComponent(q)+"&prop=imageinfo&iiprop=url%7Cextmetadata&iiurlwidth=900");
+    return fetch(u,{cache:"force-cache"})
+      .then(function(x){ if(!x.ok) throw new Error("x"); return x.json(); })
+      .then(function(j){
+        var pages=(j&&j.query&&j.query.pages)?j.query.pages:null;
+        if(!pages) return null;
+        for(var id in pages){
+          if(!pages.hasOwnProperty(id)) continue;
+          var ii=pages[id].imageinfo&&pages[id].imageinfo[0];
+          if(!ii||!ii.thumburl) continue;
+          var art=(ii.extmetadata&&ii.extmetadata.Artist&&ii.extmetadata.Artist.value)||"";
+          art=art.replace(/<[^>]*>/g,"").replace(/\s+/g," ");
+          art=art.replace(/^\s+|\s+$/g,"").substring(0,42);
+          return { src:ii.thumburl, credit:(art?("\u00a9 "+art):"Wikimedia")+" / Commons",
+                   link:ii.descriptionurl||null, exact:false };
+        }
+        return null;
+      })
+      .catch(function(){ return null; });
+  }
+
+  /* ================= hentning ================= */
+  var SRC_ORDER=["airplaneslive","adsblol","adsbfi"];
+  var srcTried={};
+
+  function fetchNow(){
+    DIAG.code=null;
+    var nm=Math.min(250,Math.max(6,Math.round((CFG.radius*2.2)/1.852)));
+    var SRC=SOURCES[CFG.source];
+    DIAG.url=apiURL(CFG.source,SRC.host,SRC.path(CFG.lat.toFixed(4),CFG.lon.toFixed(4),nm));
+    fetch(DIAG.url,{cache:"no-store"})
+      .then(function(r){ DIAG.code=r.status; if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+      .then(function(j){
+        var raw=j.ac||j.aircraft||[];
+        STATE.planes=raw.map(toPlane).filter(function(p){return p;});
+        STATE.planes.sort(function(a,b){ return b.elev-a.elev; });
+        lastGood=Date.now(); failStreak=0; backoff=0; setDot("live");
+        DIAG.ok=true; DIAG.raw=raw.length; DIAG.msg="svar modtaget";
+        schedule(); render(); updateStatus();
+      })
+      .catch(function(e){
+        failStreak++; setDot(failStreak>2?"warn":"");
+        DIAG.ok=false;
+        DIAG.msg = !ORIGIN_OK ? "blokeret af browseren \u2014 siden k\u00f8rer som lokal fil"
+                 : (DIAG.code===429) ? "HTTP 429 \u2014 for mange kald, kilden holder pause"
+                 : (DIAG.code===403) ? "HTTP 403 \u2014 kilden afviser adgang"
+                 : DIAG.code ? ("serveren svarede HTTP "+DIAG.code)
+                             : "kaldet n\u00e5ede ikke frem \u2014 typisk CORS eller manglende netv\u00e6rk";
+        srcTried[SOURCES[CFG.source].label+(useVia?" via eget dom\u00e6ne":" direkte")]=1;
+        if(useVia && !CFG.proxy){
+          useVia=false; backoff=0;              /* _redirects mangler m\u00e5ske \u2014 pr\u00f8v direkte */
+        } else {
+          useVia = !CFG.proxy;
+          var i=SRC_ORDER.indexOf(CFG.source);
+          var next=SRC_ORDER[(i+1)%SRC_ORDER.length];
+          if(next!==CFG.source){
+            CFG.source=next; writeHash();
+            var sel=document.getElementById("fSource"); if(sel) sel.value=next;
+          }
+          backoff = backoff ? Math.min(backoff*2,60) : Math.max(4,CFG.interval*2);
+        }
+        schedule(); render(); updateStatus();
+      });
+  }
+  function setDot(m){ document.getElementById("dot").className="dot"+(m?" "+m:""); }
+
+  function toPlane(a){
+    if(!a||a.lat===undefined||a.lon===undefined) return null;
+    var altFt=(typeof a.alt_baro==="number")?a.alt_baro:((typeof a.alt_geom==="number")?a.alt_geom:null);
+    if(altFt===null||altFt<150) return null;
+    var altM=altFt*0.3048;
+    var ground=(typeof a.dst==="number")?a.dst*1.852:haversine(CFG.lat,CFG.lon,a.lat,a.lon);
+    var bearing=(typeof a.dir==="number")?a.dir:bearingTo(CFG.lat,CFG.lon,a.lat,a.lon);
+    var elev=Math.atan2(altM,ground*1000)*180/Math.PI;
+    var cs=((a.flight||a.r||"")+"").trim()||((a.hex||"")+"").toUpperCase();
+    return { hex:a.hex, cs:cs, reg:a.r||null, type:a.t||null,
+      altFt:Math.round(altFt), altM:Math.round(altM),
+      gs:(typeof a.gs==="number")?a.gs:null,
+      ground:ground, elev:elev, bearing:bearing,
+      inRange: ground<=CFG.radius && elev>=CFG.elev };
+  }
+  function haversine(la1,lo1,la2,lo2){
+    var R=6371,t=Math.PI/180,dLa=(la2-la1)*t,dLo=(lo2-lo1)*t;
+    var x=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*t)*Math.cos(la2*t)*Math.sin(dLo/2)*Math.sin(dLo/2);
+    return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+  }
+  function bearingTo(la1,lo1,la2,lo2){
+    var t=Math.PI/180;
+    var y=Math.sin((lo2-lo1)*t)*Math.cos(la2*t);
+    var x=Math.cos(la1*t)*Math.sin(la2*t)-Math.sin(la1*t)*Math.cos(la2*t)*Math.cos((lo2-lo1)*t);
+    return (Math.atan2(y,x)/t+360)%360;
+  }
+
+  /* ================= visning ================= */
+  function setPhotoFlag(on){
+    var c=document.body.className.replace(/\s*hasphoto/g,"");
+    document.body.className = on ? (c+" hasphoto") : c;
+  }
+
+  function render(){
+    var live=STATE.planes.filter(function(p){ return p.inRange; });
+    DIAG.inRange=live.length;
+    var inr = (testIndex>=0) ? [TESTS[testIndex]] : live;
+    if(!inr.length){ document.body.className="empty"; shownHex=null; return; }
+    if(document.body.className.indexOf("empty")>=0) document.body.className="";
+
+    var a=inr[0], i;
+    if(testIndex<0){ for(i=0;i<Math.min(inr.length,4);i++) queueRoute(inr[i].cs); }
+    else if(TESTROUTES[a.cs] && !routeCache.hasOwnProperty(a.cs)) routeCache[a.cs]=TESTROUTES[a.cs];
+
+    if(shownHex!==a.hex){
+      shownHex=a.hex;
+      setLogo(a);
+      document.getElementById("callsign").textContent=a.cs;
+
+      var sp=typeSpec(a.type);
+      document.getElementById("typename").textContent=
+        (sp?sp.name:(a.type||"ukendt type"))+(a.reg?"   ·   "+a.reg:"");
+      document.getElementById("silhouette").innerHTML=sp?silhouette(sp):"";
+
+      queuePhoto(a);
+      var ph=photoCache[photoKey(a)];
+      var box=document.getElementById("photoBox"), img=document.getElementById("photoImg");
+      if(CFG.photos==="1" && ph && ph.src){
+        img.onerror=function(){ box.className="photo"; setPhotoFlag(false); };
+        img.alt=(sp?sp.name:(a.type||"fly"));
+        img.src=ph.src;
+        document.getElementById("photoCredit").textContent=ph.credit;
+        box.className="photo on"; setPhotoFlag(true);
+      } else {
+        box.className="photo"; img.removeAttribute("src"); setPhotoFlag(false);
+      }
+
+      var r=routeCache[a.cs], route=document.getElementById("route");
+      route.className="route"+((r&&r.ok)?"":" unknown");
+      route.innerHTML=(r&&r.ok)
+        ? '<div class="apt">'+(r.from.iata_code||r.from.icao_code)+'<span>'+(r.from.municipality||r.from.name||"")+'</span></div>'+
+          '<div class="arrow"></div>'+
+          '<div class="apt">'+(r.to.iata_code||r.to.icao_code)+'<span>'+(r.to.municipality||r.to.name||"")+'</span></div>'
+        : '<div class="apt">···<span>rute ukendt</span></div>';
+    }
+
+    var av=(CFG.units==="avia");
+    var rows=[
+      ["Højde", av?nf(a.altFt):nf(a.altM), av?"ft":"m"],
+      ["Fart", a.gs===null?"–":(av?nf(a.gs):nf(a.gs*1.852)), av?"kt":"km/t"],
+      ["Afstand", nf(a.ground,1), "km"],
+      ["Kig", nf(a.elev)+"° "+compass(a.bearing), ""]
+    ];
+    var html="";
+    for(i=0;i<rows.length;i++){
+      html+='<div class="m"><div class="k">'+rows[i][0]+'</div><div class="v">'+rows[i][1]+
+            (rows[i][2]?'<em>'+rows[i][2]+'</em>':'')+'</div></div>';
+    }
+    document.getElementById("metrics").innerHTML=html;
+
+    var rest=inr.slice(1), o="";
+    for(i=0;i<Math.min(rest.length,5);i++){
+      o+=(i?"      ":"")+rest[i].cs+" "+nf(rest[i].elev)+"° "+compass(rest[i].bearing);
+    }
+    document.getElementById("others").textContent=o?("også oppe:   "+o):"";
+  }
+
+  /* ================= ur, gear, indstillinger ================= */
+  function tickClock(){
+    var d=new Date();
+    document.getElementById("clock").textContent=
+      ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)+":"+("0"+d.getSeconds()).slice(-2);
+  }
+  var gear=document.getElementById("gear");
+  var controls=document.getElementById("controls"), gearTimer=null;
+  function wakeGear(){
+    controls.className="controls show";
+    if(gearTimer) clearTimeout(gearTimer);
+    gearTimer=setTimeout(function(){ controls.className="controls"; },5000);
+  }
+
+  /* ---- fuldsk\u00e6rm ---- */
+  var ICON_IN  = '<path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/>';
+  var ICON_OUT = '<path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/>';
+  function fsElement(){
+    return document.fullscreenElement || document.webkitFullscreenElement ||
+           document.mozFullScreenElement || document.msFullscreenElement || null;
+  }
+  function paintFsIcon(){
+    document.getElementById("fsIcon").innerHTML = fsElement() ? ICON_OUT : ICON_IN;
+  }
+  document.getElementById("btnFs").onclick=function(){
+    var el=document.documentElement;
+    if(!fsElement()){
+      var req=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen;
+      if(req){ try{ req.call(el); }catch(e){} }
+    } else {
+      var ex=document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen||document.msExitFullscreen;
+      if(ex){ try{ ex.call(document); }catch(e){} }
+    }
+    wakeGear();
+  };
+  function onFsChange(){ paintFsIcon(); setUnit(); setTimeout(setUnit,250); }
+  document.addEventListener("fullscreenchange",onFsChange);
+  document.addEventListener("webkitfullscreenchange",onFsChange);
+  paintFsIcon();
+  document.addEventListener("mousedown",wakeGear);
+  document.addEventListener("touchstart",wakeGear);
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ closeSheet(); } else { wakeGear(); } });
+
+  function updateStatus(){
+    var box=document.getElementById("status");
+    if(!box || sheet.className.indexOf("open")<0) return;
+    var age = lastGood ? Math.round((Date.now()-lastGood)/1000) : null;
+    var stale = (age===null) || (age > Math.max(30, CFG.interval*4));
+    var online = DIAG.ok && !stale;
+    var rows=[
+      ["Forbindelse", '<b class="'+(online?"ok":"bad")+'">'+(online?"ONLINE":"OFFLINE")+'</b>'],
+      ["Kilde", "<b>"+SOURCES[CFG.source].label+"</b>"],
+      ["Rute", "<b>"+(CFG.proxy ? "ekstern proxy"
+                    : useVia ? "eget dom\u00e6ne (ingen CORS)" : "direkte (kr\u00e6ver CORS)")+"</b>"],
+      ["Seneste svar", "<b>"+(age===null ? "aldrig" : ("for "+age+" s siden"))+"</b>"],
+      ["Status", '<b class="'+(DIAG.ok?"ok":"bad")+'">'+DIAG.msg+"</b>"],
+      ["Fly modtaget", "<b>"+DIAG.raw+"</b>"],
+      ["Heraf i synsvidde", "<b>"+DIAG.inRange+"</b>"],
+      ["Siden k\u00f8rer fra", '<b class="'+(ORIGIN_OK?"ok":"bad")+'">'+location.protocol+"</b>"],
+      ["N\u00e6ste fors\u00f8g", "<b>"+(backoff
+          ? ("om "+Math.max(0,Math.round((nextTry-Date.now())/1000))+" s (pause p\u00e5 "+backoff+" s efter fejl)")
+          : ("hvert "+CFG.interval+". sekund"))+"</b>"],
+      ["Visning", testIndex>=0 ? '<b class="test">TESTFLY '+(testIndex+1)+" af "+TESTS.length+"</b>" : "<b>live</b>"]
+    ];
+    var tried=[],k;
+    for(k in srcTried){ if(srcTried.hasOwnProperty(k)) tried.push(k); }
+    if(tried.length) rows.push(["Fejlede fors\u00f8g",'<b class="bad" style="font-size:10px">'+tried.join("<br>")+"</b>"]);
+    if(CFG.proxy){
+      var mixed = (location.protocol==="https:" && CFG.proxy.indexOf("http://")===0);
+      rows.push(["Proxy aktiv", '<b class="bad">'+CFG.proxy+"</b>"]);
+      if(mixed) rows.push(["Advarsel",'<b class="bad">http:// proxy p\u00e5 https-side blokeres altid</b>']);
+    }
+    rows.push(["Kalder", '<b style="font-size:10px;word-break:break-all">'+(DIAG.url||"\u2013")+"</b>"]);
+    var wb=document.getElementById("warnbox");
+    if(!ORIGIN_OK){
+      wb.className="warnbox show";
+      wb.innerHTML = (location.protocol==="content:")
+        ? "<b>Siden er \u00e5bnet fra Downloads (content://)</b><br>"+
+          "Android afsk\u00e6rer den slags sider helt fra netv\u00e6rket. Ingen indstilling her kan omg\u00e5 det.<br><br>"+
+          "<b>Pr\u00f8v at \u00e5bne den samme fil som rigtig fil i stedet:</b> skriv "+
+          "<b>file:///sdcard/Download/flightster.html</b> i adresselinjen. Det kan sagtens virke, "+
+          "for en file://-side m\u00e5 godt kalde et API der svarer med Access-Control-Allow-Origin: *.<br><br>"+
+          "Virker det ikke: k\u00f8r en lille webserver p\u00e5 selve enheden (Termux: <b>python -m http.server 8080</b>) "+
+          "og \u00e5bn <b>http://127.0.0.1:8080/</b> \u2014 stadig helt lokalt."
+        : "<b>Siden k\u00f8rer som lokal fil (file://)</b><br>"+
+          "Det beh\u00f8ver ikke v\u00e6re et problem: en file://-side m\u00e5 godt hente fra et API der svarer med "+
+          "Access-Control-Allow-Origin: *. Viser <b>Status</b> herunder alligevel en fejl, afviser netop den kilde "+
+          "oprindelsen <b>null</b>.<br><br>"+
+          "<b>Pr\u00f8v i den r\u00e6kkef\u00f8lge:</b> skift datakilde herunder \u2192 udfyld proxy-feltet \u2192 "+
+          "k\u00f8r en webserver lokalt p\u00e5 enheden (Termux: <b>python -m http.server 8080</b>).<br><br>"+
+          "Testfly-knappen virker uanset hvad.";
+    } else { wb.className="warnbox"; }
+    var h="";
+    for(var i=0;i<rows.length;i++) h+='<div class="row"><span>'+rows[i][0]+"</span>"+rows[i][1]+"</div>";
+    box.innerHTML=h;
+  }
+
+  function markPresets(){
+    var b=document.getElementById("presets").getElementsByTagName("button");
+    for(var i=0;i<b.length;i++){
+      var on = parseFloat(b[i].getAttribute("data-r"))===CFG.radius &&
+               parseFloat(b[i].getAttribute("data-e"))===CFG.elev;
+      b[i].className = "btn small"+(on?" on":"");
+    }
+  }
+  (function(){
+    var b=document.getElementById("presets").getElementsByTagName("button");
+    for(var i=0;i<b.length;i++){
+      b[i].onclick=function(){
+        CFG.radius=parseFloat(this.getAttribute("data-r"));
+        CFG.elev=parseFloat(this.getAttribute("data-e"));
+        document.getElementById("fRadius").value=CFG.radius;
+        document.getElementById("fElev").value=CFG.elev;
+        writeHash(); markPresets(); restart(); updateStatus();
+      };
+    }
+  })();
+
+  document.getElementById("btnClearProxy").onclick=function(){
+    CFG.proxy=""; document.getElementById("fProxy").value="";
+    writeHash(); restart(); updateStatus();
+  };
+
+  document.getElementById("btnTest").onclick=function(){
+    testIndex++;
+    if(testIndex>=TESTS.length) testIndex=-1;
+    this.textContent = (testIndex<0) ? "Testfly" : ("Testfly "+(testIndex+1)+"/"+TESTS.length);
+    this.className = "btn"+(testIndex>=0?" on":"");
+    shownHex=null; render(); updateStatus();
+  };
+
+  /* ============ kortvælger: minimal slippy map, ingen biblioteker ============ */
+  var MAP={z:9,px:0,py:0,on:false};
+  function lon2px(lon,z){ return (lon+180)/360*Math.pow(2,z)*256; }
+  function lat2py(lat,z){
+    var r=Math.max(-85.05,Math.min(85.05,lat))*Math.PI/180;
+    return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z)*256;
+  }
+  function px2lon(px,z){ return px/(Math.pow(2,z)*256)*360-180; }
+  function py2lat(py,z){
+    var n=Math.PI-2*Math.PI*py/(Math.pow(2,z)*256);
+    return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));
+  }
+  function mapCentre(){ return { lat:py2lat(MAP.py,MAP.z), lon:px2lon(MAP.px,MAP.z) }; }
+
+  function drawMap(){
+    var box=document.getElementById("map"), tl=document.getElementById("tiles");
+    var W=box.clientWidth, H=box.clientHeight;
+    if(!W||!H) return;
+    var n=Math.pow(2,MAP.z);
+    var left=MAP.px-W/2, top=MAP.py-H/2;
+    var x0=Math.floor(left/256), x1=Math.floor((left+W)/256);
+    var y0=Math.floor(top/256),  y1=Math.floor((top+H)/256);
+    var html="",x,y;
+    for(y=y0;y<=y1;y++){
+      if(y<0||y>=n) continue;
+      for(x=x0;x<=x1;x++){
+        var tx=((x%n)+n)%n;
+        html+='<img alt="" loading="lazy" src="https://tile.openstreetmap.org/'+MAP.z+'/'+tx+'/'+y+'.png"'+
+              ' style="left:'+(x*256-left)+'px;top:'+(y*256-top)+'px">';
+      }
+    }
+    tl.innerHTML=html;
+    var c=mapCentre();
+    document.getElementById("mapCoords").textContent=
+      c.lat.toFixed(4)+"\u00b0N  "+c.lon.toFixed(4)+"\u00b0\u00d8   \u00b7   zoom "+MAP.z;
+  }
+
+  function openMap(){
+    var la=parseFloat(document.getElementById("fLat").value);
+    var lo=parseFloat(document.getElementById("fLon").value);
+    if(isNaN(la)) la=CFG.lat; if(isNaN(lo)) lo=CFG.lon;
+    MAP.px=lon2px(lo,MAP.z); MAP.py=lat2py(la,MAP.z);
+    document.getElementById("mapwrap").className="mapwrap open";
+    MAP.on=true;
+    setTimeout(drawMap,30);
+  }
+  function closeMap(){
+    document.getElementById("mapwrap").className="mapwrap";
+    MAP.on=false;
+    document.getElementById("tiles").innerHTML="";
+  }
+
+  (function(){
+    var box=document.getElementById("map");
+    var dragging=false,lx=0,ly=0,moved=0;
+    function down(e){
+      dragging=true; moved=0; box.className="map drag";
+      var t=e.touches?e.touches[0]:e; lx=t.clientX; ly=t.clientY;
+      if(e.cancelable) e.preventDefault();
+    }
+    function move(e){
+      if(!dragging) return;
+      var t=e.touches?e.touches[0]:e;
+      var dx=t.clientX-lx, dy=t.clientY-ly;
+      lx=t.clientX; ly=t.clientY; moved+=Math.abs(dx)+Math.abs(dy);
+      MAP.px-=dx; MAP.py-=dy;
+      var lim=Math.pow(2,MAP.z)*256;
+      MAP.py=Math.max(0,Math.min(lim,MAP.py));
+      drawMap();
+      if(e.cancelable) e.preventDefault();
+    }
+    function up(){ dragging=false; box.className="map"; }
+    box.addEventListener("mousedown",down);
+    window.addEventListener("mousemove",move);
+    window.addEventListener("mouseup",up);
+    box.addEventListener("touchstart",down,{passive:false});
+    box.addEventListener("touchmove",move,{passive:false});
+    box.addEventListener("touchend",up);
+
+    function zoom(d){
+      var nz=Math.max(3,Math.min(16,MAP.z+d));
+      if(nz===MAP.z) return;
+      var f=Math.pow(2,nz-MAP.z);
+      MAP.px*=f; MAP.py*=f; MAP.z=nz; drawMap();
+    }
+    document.getElementById("zIn").onclick=function(){ zoom(1); };
+    document.getElementById("zOut").onclick=function(){ zoom(-1); };
+    box.addEventListener("wheel",function(e){ e.preventDefault(); zoom(e.deltaY<0?1:-1); },{passive:false});
+  })();
+
+  document.getElementById("btnMap").onclick=function(){
+    if(MAP.on){ closeMap(); this.className="btn"; }
+    else { openMap(); this.className="btn on"; }
+  };
+  document.getElementById("btnMapUse").onclick=function(){
+    var c=mapCentre();
+    document.getElementById("fLat").value=c.lat.toFixed(4);
+    document.getElementById("fLon").value=c.lon.toFixed(4);
+    closeMap();
+    document.getElementById("btnMap").className="btn";
+  };
+
+  var sheet=document.getElementById("sheet");
+  function openSheet(){
+    document.getElementById("fPlace").value=CFG.place;
+    document.getElementById("fLat").value=CFG.lat;
+    document.getElementById("fLon").value=CFG.lon;
+    document.getElementById("fRadius").value=CFG.radius;
+    document.getElementById("fElev").value=CFG.elev;
+    document.getElementById("fInterval").value=CFG.interval;
+    document.getElementById("fSource").value=CFG.source;
+    document.getElementById("fUnits").value=CFG.units;
+    document.getElementById("fPhotos").value=CFG.photos;
+    document.getElementById("fProxy").value=CFG.proxy;
+    sheet.className="sheet open";
+    markPresets(); updateStatus();
+    if(statusTimer) clearInterval(statusTimer);
+    statusTimer=setInterval(updateStatus,1000);
+  }
+  function closeSheet(){
+    if(MAP.on){ closeMap(); document.getElementById("btnMap").className="btn"; }
+    sheet.className="sheet";
+    if(statusTimer){ clearInterval(statusTimer); statusTimer=null; }
+  }
+  gear.onclick=openSheet;
+  document.getElementById("btnClose").onclick=closeSheet;
+  document.getElementById("btnSave").onclick=function(){
+    CFG.place=document.getElementById("fPlace").value||"Her";
+    CFG.lat=parseFloat(document.getElementById("fLat").value);
+    CFG.lon=parseFloat(document.getElementById("fLon").value);
+    CFG.radius=Math.max(2,parseFloat(document.getElementById("fRadius").value)||DEF.radius);
+    CFG.elev=Math.max(0,parseFloat(document.getElementById("fElev").value)||0);
+    CFG.interval=Math.max(2,parseFloat(document.getElementById("fInterval").value)||DEF.interval);
+    CFG.source=document.getElementById("fSource").value;
+    CFG.units=document.getElementById("fUnits").value;
+    CFG.photos=document.getElementById("fPhotos").value;
+    CFG.proxy=document.getElementById("fProxy").value.replace(/^\s+|\s+$/g,"");
+    writeHash(); applyHeader(); markPresets(); closeSheet(); restart();
+  };
+  document.getElementById("btnGeo").onclick=function(){
+    if(!navigator.geolocation){ alert("Browseren giver ikke adgang til position. Skriv koordinaterne ind."); return; }
+    navigator.geolocation.getCurrentPosition(function(p){
+      document.getElementById("fLat").value=p.coords.latitude.toFixed(4);
+      document.getElementById("fLon").value=p.coords.longitude.toFixed(4);
+      if(MAP.on){ MAP.z=11; MAP.px=lon2px(p.coords.longitude,MAP.z); MAP.py=lat2py(p.coords.latitude,MAP.z); drawMap(); }
+    },function(){ alert("Positionen kunne ikke hentes. Skriv koordinaterne ind."); });
+  };
+  var wl=null;
+  document.getElementById("btnWake").onclick=function(){
+    if(!navigator.wakeLock){ alert("Browseren kan ikke holde skærmen tændt. Slå skærmtimeout fra i tablettens indstillinger."); return; }
+    navigator.wakeLock.request("screen").then(function(l){ wl=l; alert("Skærmen holdes tændt, så længe siden er fremme."); })
+      .catch(function(){ alert("Skærmlåsen blev afvist. Slå skærmtimeout fra i tablettens indstillinger."); });
+  };
+  document.addEventListener("visibilitychange",function(){
+    if(document.visibilityState==="visible"){
+      if(navigator.wakeLock&&wl){ navigator.wakeLock.request("screen").then(function(l){ wl=l; }).catch(function(){}); }
+      backoff=0; restart();
+    }
+  });
+
+  /* --u binder al typografi til rammens faktiske størrelse, ikke viewporten,
+     så intet kan vokse ud over sit felt uanset skærmform */
+  var frameEl=document.getElementsByClassName("frame")[0];
+  function setUnit(){
+    var w=frameEl.clientWidth, h=frameEl.clientHeight;
+    if(!w||!h) return;
+    var portrait = (window.innerWidth/window.innerHeight) <= 1;
+    var u = portrait ? Math.min(w/100, h/165) : Math.min(w/177.8, h/100);
+    document.documentElement.style.setProperty("--u", u.toFixed(3)+"px");
+  }
+  window.addEventListener("resize",setUnit);
+  window.addEventListener("orientationchange",function(){ setTimeout(setUnit,150); });
+  setUnit(); setTimeout(setUnit,300);
+
+  function applyHeader(){ document.getElementById("placeName").textContent=CFG.place.toUpperCase(); }
+  function schedule(){
+    if(timer) clearTimeout(timer);
+    var wait = backoff ? backoff*1000 : Math.max(2,CFG.interval)*1000;
+    nextTry = Date.now()+wait;
+    timer=setTimeout(fetchNow, wait);
+  }
+  function restart(){
+    if(timer) clearTimeout(timer);
+    routeQueue=[]; photoQueue=[]; shownHex=null; backoff=0; srcTried={}; useVia=!CFG.proxy; fetchNow();
+  }
+  window.addEventListener("hashchange",function(){ CFG=readHash(); applyHeader(); restart(); });
+
+  applyHeader(); tickClock(); setInterval(tickClock,1000); restart();
+})();
+</script>
+</body>
+</html>
