@@ -124,7 +124,7 @@ class FlightWidget : AppWidgetProvider() {
             var h = dp(if (hDp > 0) hDp else 160)
 
             // ARGB_8888 er 4 bytes per pixel; hold os under ca. 750 kB
-            val maxPixels = 190_000
+            val maxPixels = 240_000
             if (w * h > maxPixels) {
                 val k = kotlin.math.sqrt(maxPixels.toDouble() / (w * h))
                 w = (w * k).toInt()
@@ -204,7 +204,7 @@ class WidgetWorker(
                 val existing = PhotoStore.load(context, flight)
                 if (existing == null) {
                     val photo = try {
-                        FlightRepo.fetchPhoto(flight, maxWidth = 640)
+                        FlightRepo.fetchPhoto(flight, maxWidth = 900)
                     } catch (_: Exception) {
                         null
                     }
