@@ -21,6 +21,8 @@ data class Flight(
     val distanceKm: Double,
     val elevation: Int,
     val compass: String,
+    val photoUrl: String? = null,
+    val photoCredit: String? = null,
     val seenAtMillis: Long = System.currentTimeMillis()
 )
 
@@ -94,36 +96,27 @@ object FlightRepo {
             speedKt = json.intOrNull("kt"),
             distanceKm = json.optDouble("dist_km", 0.0),
             elevation = json.optInt("elev", 0),
-            compass = json.optString("compass", "")
+            compass = json.optString("compass", ""),
+            photoUrl = json.stringOrNull("photo"),
+            photoCredit = json.stringOrNull("photo_credit")
         )
     }
 
     /**
-     * Foto af det præcise fly, slået op på registrering hos Planespotters.
+     * Henter selve billedfilen.
      *
-     * Billedet vises med fotografens navn, som deres vilkår kræver. Der
-     * hentes bevidst en lille udgave: RemoteViews sender widgetens indhold
+     * Selve opslaget hos Planespotters sker på serveren i /api/now, fordi de
+     * afviser kald uden Origin, Referer eller en beskrivende User-Agent —
+     * hvilket en app der kalder direkte ikke har. Her hentes kun den URL
+     * serveren allerede har fundet.
+     *
+     * Billedet skaleres bevidst ned: RemoteViews sender widgetens indhold
      * over IPC med en grænse omkring 1 MB, så et stort billede ville få
      * widgeten til at fejle tavst.
      */
-    fun fetchPhoto(baseUrl: String, flight: Flight, maxWidth: Int): PhotoResult? {
-        val reg = flight.registration?.trim().orEmpty()
-        if (reg.isEmpty()) return null
-
-        val url = "${baseUrl.trimEnd('/')}/api/planespotters/pub/photos/reg/$reg"
-        val body = readText(url) ?: return null
-
-        val (src, credit) = try {
-            val photos = JSONObject(body).optJSONArray("photos") ?: return null
-            if (photos.length() == 0) return null
-            val p = photos.getJSONObject(0)
-            val thumb = p.optJSONObject("thumbnail_large") ?: p.optJSONObject("thumbnail")
-            val s = thumb?.optString("src").orEmpty()
-            if (s.isEmpty()) return null
-            s to "© ${p.optString("photographer", "ukendt")} / Planespotters.net"
-        } catch (_: Exception) {
-            return null
-        }
+    fun fetchPhoto(flight: Flight, maxWidth: Int): PhotoResult? {
+        val src = flight.photoUrl?.takeIf { it.isNotBlank() } ?: return null
+        val credit = flight.photoCredit ?: "Planespotters.net"
 
         val bitmap = try {
             (URL(src).openConnection() as HttpURLConnection).run {
