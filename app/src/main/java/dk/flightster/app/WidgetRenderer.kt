@@ -17,6 +17,10 @@ import kotlin.math.min
  * snævert udvalg af komponenter. Derfor tegnes panelet i stedet på et lærred
  * og lægges i én ImageView. Det giver fuld kontrol over udseendet og gør det
  * muligt at genbruge designet fra webudgaven præcist.
+ *
+ * Layoutet på en bred widget: identitet til venstre, foto til højre, og
+ * nøgletallene i en fuld bredde nederst. Kig-retningen står blandt dem, fordi
+ * det er et tal på linje med de andre — ikke en overskrift.
  */
 object WidgetRenderer {
 
@@ -26,22 +30,10 @@ object WidgetRenderer {
     private const val MUTED = 0xFF6E6A62.toInt()
     private const val DIM = 0xFF403D38.toInt()
 
-    private val condensed: Typeface =
-        Typeface.create("sans-serif-condensed", Typeface.BOLD)
-    private val condensedMedium: Typeface =
-        Typeface.create("sans-serif-condensed", Typeface.NORMAL)
-    private val mono: Typeface =
-        Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+    private val condensed: Typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
+    private val condensedMedium: Typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+    private val mono: Typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
 
-    /**
-     * @param widthPx  widgetens bredde i pixels
-     * @param heightPx widgetens højde i pixels
-     * @param flight   seneste observation, eller null hvis der aldrig har været en
-     * @param photo    foto af flyet, eller null — så bruges stregtegningen
-     * @param place    stednavn i topbjælken
-     * @param agoMinutes hvor længe siden observationen blev gjort
-     * @param offline  true hvis der ikke har været kontakt i lang tid
-     */
     fun render(
         widthPx: Int,
         heightPx: Int,
@@ -56,40 +48,52 @@ object WidgetRenderer {
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
 
-        // afrundet sort baggrund
         val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BG }
         val radius = min(w, h) * 0.055f
         c.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), radius, radius, bgPaint)
 
-        // enhed: al typografi skaleres efter panelets størrelse, som på web
+        // Al typografi skaleres efter panelets størrelse, som i webudgaven
         val u = min(w / 100f, h / 62f)
         val pad = u * 4.5f
 
         drawHeader(c, w, u, pad, place, offline)
 
         if (flight == null) {
-            drawEmpty(c, w, h, u, pad, offline)
+            drawEmpty(c, h, u, pad, offline)
             return bmp
         }
 
-        val headerBottom = pad + u * 4.5f
-        val footerTop = h - pad - u * 3.2f
+        val headerBottom = pad + u * 5.0f
+        val footerTop = h - pad - u * 3.0f
+        val metricsHeight = u * 9.2f
+        val metricsTop = footerTop - metricsHeight
+        val bandTop = headerBottom
+        val bandBottom = metricsTop - u * 1.4f
 
-        // Visuel del øverst, data nedenunder. Kvadratiske og brede widgets
-        // får forskellig fordeling, så teksten aldrig klemmes.
-        val wide = w.toFloat() / h > 2.0f
-        // Selv en bred widget skal vise flyet — bare i en lavere stribe.
-        val visualHeight = (footerTop - headerBottom) * (if (wide) 0.34f else 0.46f)
-        val visualTop = headerBottom + u * 1.2f
+        val wide = w.toFloat() / h > 1.6f
 
-        if (visualHeight > u * 8f) {
-            drawVisual(c, flight, photo, pad, visualTop, w - pad * 2f, visualHeight, u)
+        if (wide) {
+            // Foto til højre, identitet til venstre
+            val gap = u * 3f
+            val rightWidth = (w - pad * 2f) * 0.40f
+            val leftWidth = (w - pad * 2f) - rightWidth - gap
+            drawIdentity(c, flight, pad, bandTop, leftWidth, bandBottom - bandTop, u)
+            drawVisual(
+                c, flight, photo,
+                pad + leftWidth + gap, bandTop, rightWidth, bandBottom - bandTop, u
+            )
+        } else {
+            // Smal widget: visuel del øverst, identitet under
+            val visualHeight = (bandBottom - bandTop) * 0.52f
+            drawVisual(c, flight, photo, pad, bandTop, w - pad * 2f, visualHeight, u)
+            drawIdentity(
+                c, flight, pad, bandTop + visualHeight + u * 1.5f,
+                w - pad * 2f, bandBottom - bandTop - visualHeight - u * 1.5f, u
+            )
         }
 
-        val textTop = if (visualHeight > u * 8f) visualTop + visualHeight + u * 2.0f
-                      else headerBottom + u * 1.5f
-        drawFlight(c, flight, pad, textTop, w - pad * 2f, footerTop - textTop, u, wide)
-        drawFooter(c, flight, w, footerTop, pad, u, agoMinutes)
+        drawMetrics(c, flight, pad, metricsTop, w - pad * 2f, u)
+        drawFooter(c, w, footerTop, pad, u, agoMinutes)
 
         return bmp
     }
@@ -118,7 +122,7 @@ object WidgetRenderer {
         c.drawCircle(w - pad - u * 0.7f, y - u * 0.8f, u * 0.7f, dot)
     }
 
-    private fun drawEmpty(c: Canvas, w: Int, h: Int, u: Float, pad: Float, offline: Boolean) {
+    private fun drawEmpty(c: Canvas, h: Int, u: Float, pad: Float, offline: Boolean) {
         val title = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = condensed
             textSize = u * 7f
@@ -134,8 +138,65 @@ object WidgetRenderer {
         c.drawText(
             if (offline) "Prøver igen ved næste opdatering"
             else "Ingen fly har været over dig endnu",
-            pad, cy + u * 3.4f, sub
+            pad, cy + u * 4.2f, sub
         )
+    }
+
+    /** Callsign, rute og type. */
+    private fun drawIdentity(
+        c: Canvas, f: Flight,
+        left: Float, top: Float, w: Float, h: Float, u: Float
+    ) {
+        var y = top
+
+        val cs = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = condensed
+            color = Color.WHITE
+            textSize = u * 10f
+        }
+        while (cs.measureText(f.callsign) > w && cs.textSize > u * 4.5f) {
+            cs.textSize -= u * 0.25f
+        }
+        y += cs.textSize * 0.80f
+        c.drawText(f.callsign, left, y, cs)
+
+        y += u * 6.2f
+        val apt = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = condensed
+            color = AMBER
+            textSize = u * 6.2f
+        }
+        val arrow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = DIM
+            strokeWidth = max(1f, u * 0.20f)
+        }
+        if (f.from != null && f.to != null) {
+            c.drawText(f.from, left, y, apt)
+            val ax = left + apt.measureText(f.from) + u * 2.0f
+            val aw = u * 4.6f
+            val ay = y - apt.textSize * 0.33f
+            c.drawLine(ax, ay, ax + aw, ay, arrow)
+            c.drawLine(ax + aw - u * 1.1f, ay - u * 0.7f, ax + aw, ay, arrow)
+            c.drawLine(ax + aw - u * 1.1f, ay + u * 0.7f, ax + aw, ay, arrow)
+            c.drawText(f.to, ax + aw + u * 2.0f, y, apt)
+        } else {
+            apt.color = DIM
+            c.drawText("rute ukendt", left, y, apt)
+        }
+
+        y += u * 3.2f
+        val meta = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = mono
+            color = MUTED
+            textSize = u * 2.1f
+            letterSpacing = 0.08f
+        }
+        val spec = AircraftDraw.specFor(f.type)
+        val typeLine = buildString {
+            append(spec?.name ?: f.type ?: "ukendt type")
+            f.registration?.let { append("  ·  ").append(it) }
+        }
+        c.drawText(ellipsize(typeLine, meta, w), left, y, meta)
     }
 
     /** Foto hvis vi har et, ellers stregtegningen af typen. */
@@ -143,6 +204,8 @@ object WidgetRenderer {
         c: Canvas, f: Flight, photo: PhotoResult?,
         left: Float, top: Float, w: Float, h: Float, u: Float
     ) {
+        if (w < u * 6f || h < u * 6f) return
+
         if (photo != null) {
             val bmp = photo.bitmap
             val scale = min(w / bmp.width, h / bmp.height)
@@ -153,17 +216,18 @@ object WidgetRenderer {
             val dst = RectF(dstLeft, dstTop, dstLeft + dw, dstTop + dh)
             c.drawBitmap(bmp, Rect(0, 0, bmp.width, bmp.height), dst, Paint(Paint.FILTER_BITMAP_FLAG))
 
+            // Fotografen skal krediteres, men må ikke stjæle billedet
             val credit = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 typeface = mono
-                textSize = u * 1.6f
+                textSize = u * 1.5f
                 color = MUTED
             }
-            val text = photo.credit
+            val text = ellipsize(photo.credit, credit, dw - u * 1.4f)
             val tw = credit.measureText(text)
-            val bg = Paint().apply { color = 0x8C000000.toInt() }
             c.drawRect(
-                dst.right - tw - u * 1.2f, dst.bottom - u * 2.6f,
-                dst.right, dst.bottom, bg
+                dst.right - tw - u * 1.2f, dst.bottom - u * 2.5f,
+                dst.right, dst.bottom,
+                Paint().apply { color = 0x99000000.toInt() }
             )
             c.drawText(text, dst.right - tw - u * 0.6f, dst.bottom - u * 0.8f, credit)
             return
@@ -174,86 +238,17 @@ object WidgetRenderer {
             canvas = c, sp = spec,
             left = left, top = top, w = w, h = h,
             stroke = LINE, accent = AMBER, faint = MUTED, background = BG,
-            strokeWidth = max(1.1f, u * 0.30f)
+            strokeWidth = max(1.1f, u * 0.28f)
         )
     }
 
-    private fun drawFlight(
-        c: Canvas, f: Flight,
-        left: Float, top: Float, w: Float, h: Float, u: Float, wide: Boolean
+    /** Nøgletal i fuld bredde, med kig-retningen som fjerde kolonne. */
+    private fun drawMetrics(
+        c: Canvas, f: Flight, left: Float, top: Float, w: Float, u: Float
     ) {
-        var y = top
-
-        // callsign, skaleret ned hvis det er langt
-        val cs = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = condensed
-            color = Color.WHITE
-            textSize = u * (if (wide) 8.5f else 9.5f)
-        }
-        while (cs.measureText(f.callsign) > w * 0.62f && cs.textSize > u * 4f) {
-            cs.textSize -= u * 0.3f
-        }
-        y += cs.textSize * 0.82f
-        c.drawText(f.callsign, left, y, cs)
-
-        // kig-retningen står til højre, det er det eneste tal man handler på
-        val look = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = condensed
-            color = AMBER
-            textSize = u * (if (wide) 6.5f else 7f)
-            textAlign = Paint.Align.RIGHT
-        }
-        c.drawText("${f.elevation}° ${f.compass}", left + w, y, look)
-
-        // rute
-        y += u * (if (wide) 5.2f else 5.8f)
-        val apt = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = condensed
-            color = AMBER
-            textSize = u * (if (wide) 5.4f else 6f)
-        }
-        val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = DIM
-            strokeWidth = max(1f, u * 0.18f)
-        }
-        if (f.from != null && f.to != null) {
-            c.drawText(f.from, left, y, apt)
-            val fromW = apt.measureText(f.from)
-            val ax = left + fromW + u * 2.2f
-            val aw = u * 5f
-            c.drawLine(ax, y - apt.textSize * 0.32f, ax + aw, y - apt.textSize * 0.32f, arrowPaint)
-            c.drawLine(ax + aw - u * 1.1f, y - apt.textSize * 0.32f - u * 0.7f,
-                ax + aw, y - apt.textSize * 0.32f, arrowPaint)
-            c.drawLine(ax + aw - u * 1.1f, y - apt.textSize * 0.32f + u * 0.7f,
-                ax + aw, y - apt.textSize * 0.32f, arrowPaint)
-            c.drawText(f.to, ax + aw + u * 2.2f, y, apt)
-        } else {
-            apt.color = DIM
-            c.drawText("rute ukendt", left, y, apt)
-        }
-
-        // type og registrering
-        y += u * 3.4f
-        val meta = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = mono
-            color = MUTED
-            textSize = u * 2.1f
-            letterSpacing = 0.10f
-        }
-        val spec = AircraftDraw.specFor(f.type)
-        val typeLine = buildString {
-            append(spec?.name ?: f.type ?: "ukendt type")
-            f.registration?.let { append("  ·  ").append(it) }
-        }
-        c.drawText(ellipsize(typeLine, meta, w), left, y, meta)
-
-        // nøgletal
-        y += u * 4.2f
         val rule = Paint().apply { color = DIM; strokeWidth = max(1f, u * 0.12f) }
-        c.drawLine(left, y - u * 2.4f, left + w, y - u * 2.4f, rule)
+        c.drawLine(left, top, left + w, top, rule)
 
-        val cols = if (wide) 4 else 3
-        val colW = w / cols
         val key = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = mono
             color = MUTED
@@ -263,26 +258,33 @@ object WidgetRenderer {
         val value = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = condensedMedium
             color = Color.WHITE
-            textSize = u * 4.6f
+            textSize = u * 4.8f
         }
+        val hot = Paint(value).apply { color = AMBER }
 
-        data class Cell(val k: String, val v: String)
-        val cells = mutableListOf(
-            Cell("HØJDE", "${thousands(f.altitudeM)} m"),
-            Cell("FART", f.speedKmh?.let { "$it km/t" } ?: "–"),
-            Cell("AFSTAND", "${"%.1f".format(java.util.Locale("da", "DK"), f.distanceKm)} km")
+        val cells = listOf(
+            "HØJDE" to "${thousands(f.altitudeM)} m",
+            "FART" to (f.speedKmh?.let { "$it km/t" } ?: "–"),
+            "AFSTAND" to "${"%.1f".format(java.util.Locale("da", "DK"), f.distanceKm)} km",
+            "KIG" to "${f.elevation}° ${f.compass}"
         )
-        if (wide) cells.add(Cell("KIG", "${f.elevation}° ${f.compass}"))
 
-        cells.forEachIndexed { i, cell ->
+        val colW = w / cells.size
+        cells.forEachIndexed { i, (k, v) ->
             val x = left + colW * i
-            c.drawText(cell.k, x, y, key)
-            c.drawText(cell.v, x, y + u * 4.2f, value)
+            c.drawText(k, x, top + u * 2.6f, key)
+            val paint = if (i == cells.lastIndex) hot else value
+            // krymp hvis værdien er bredere end sin kolonne
+            val p = Paint(paint)
+            while (p.measureText(v) > colW - u * 1.2f && p.textSize > u * 2.6f) {
+                p.textSize -= u * 0.2f
+            }
+            c.drawText(v, x, top + u * 7.6f, p)
         }
     }
 
     private fun drawFooter(
-        c: Canvas, f: Flight, w: Int, top: Float, pad: Float, u: Float, agoMinutes: Long
+        c: Canvas, w: Int, top: Float, pad: Float, u: Float, agoMinutes: Long
     ) {
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = mono
