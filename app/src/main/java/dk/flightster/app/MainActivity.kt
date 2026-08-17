@@ -2,12 +2,11 @@ package dk.flightster.app
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
+import android.webkit.GeolocationPermissions
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -20,18 +19,25 @@ import androidx.core.content.ContextCompat
 /**
  * Fuldskærmsudgaven af Flightster.
  *
- * Selve appen er den samme enkeltfils-webapp som kører på væggen — den
- * ligger i assets og indlæses fra det rigtige domæne, så alle kald går
- * gennem den samme opsætning. Widgeten er derimod tegnet nativt, fordi
- * Android ikke tillader en WebView i en widget.
+ * Selve appen er den samme enkeltfils-webapp som kører på væggen. Widgeten er
+ * derimod tegnet nativt, fordi Android ikke tillader en WebView i en widget.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var web: WebView
     private lateinit var prefs: Prefs
 
+    /**
+     * WebView spørger om lov til at bruge positionen gennem et kald der skal
+     * besvares. Kan vi ikke svare med det samme, fordi Android-tilladelsen
+     * mangler, parkeres svaret her indtil brugeren har taget stilling.
+     */
+    private var pendingGeoOrigin: String? = null
+    private var pendingGeoCallback: GeolocationPermissions.Callback? = null
+
     companion object {
         private const val REQ_LOCATION = 42
+        private const val REQ_LOCATION_FOR_WEB = 43
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -52,9 +58,43 @@ class MainActivity : AppCompatActivity() {
             useWideViewPort = true
             cacheMode = WebSettings.LOAD_DEFAULT
             mediaPlaybackRequiresUserGesture = false
+            setGeolocationEnabled(true)
         }
         web.setBackgroundColor(0xFF000000.toInt())
-        web.webChromeClient = WebChromeClient()
+
+        /**
+         * Uden denne overskrivning svarer WebView altid nej til geolokation,
+         * også når appen selv har fået tilladelsen af Android. Det er
+         * standardopførslen, og den er tavs — websiden får blot at vide at
+         * positionen ikke kunne hentes.
+         */
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onGeolocationPermissionsShowPrompt(
+                origin: String?,
+                callback: GeolocationPermissions.Callback?
+            ) {
+                if (hasLocationPermission()) {
+                    callback?.invoke(origin, true, false)
+                    return
+                }
+                pendingGeoOrigin = origin
+                pendingGeoCallback = callback
+                ActivityCompat.requestPermissions(
+                    this@MainActivity,
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ),
+                    REQ_LOCATION_FOR_WEB
+                )
+            }
+
+            override fun onGeolocationPermissionsHidePrompt() {
+                pendingGeoOrigin = null
+                pendingGeoCallback = null
+            }
+        }
+
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 goFullscreen()
@@ -74,17 +114,21 @@ class MainActivity : AppCompatActivity() {
         FlightWidget.refreshNow(this)
     }
 
+    private fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
     /**
      * Widgeten kan kun følge med dig rundt hvis den må se din position.
-     * Den beder kun om almindelig forgrundstilladelse — baggrundslokation
+     * Der bedes kun om almindelig forgrundstilladelse — baggrundslokation
      * ville koste batteri uden at give noget, når intervallet er en halv time.
      */
     private fun askForLocationIfNeeded() {
-        if (!prefs.autoLocation) return
-        val granted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        if (granted) return
+        if (!prefs.autoLocation || hasLocationPermission()) return
         ActivityCompat.requestPermissions(
             this,
             arrayOf(
@@ -99,8 +143,16 @@ class MainActivity : AppCompatActivity() {
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_LOCATION) {
-            FlightWidget.refreshNow(this)
+        val granted = grantResults.isNotEmpty() &&
+            grantResults.any { it == PackageManager.PERMISSION_GRANTED }
+
+        when (requestCode) {
+            REQ_LOCATION_FOR_WEB -> {
+                pendingGeoCallback?.invoke(pendingGeoOrigin, granted, false)
+                pendingGeoOrigin = null
+                pendingGeoCallback = null
+            }
+            REQ_LOCATION -> FlightWidget.refreshNow(this)
         }
     }
 
