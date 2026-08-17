@@ -87,6 +87,8 @@ class Prefs(context: Context) {
             put("dist_km", f.distanceKm)
             put("elev", f.elevation)
             put("compass", f.compass)
+            put("photo", f.photoUrl ?: org.json.JSONObject.NULL)
+            put("photo_credit", f.photoCredit ?: org.json.JSONObject.NULL)
         }
         sp.edit()
             .putString(KEY_LAST_JSON, json.toString())
@@ -114,6 +116,8 @@ class Prefs(context: Context) {
                 distanceKm = j.optDouble("dist_km"),
                 elevation = j.optInt("elev"),
                 compass = j.optString("compass"),
+                photoUrl = s("photo"),
+                photoCredit = s("photo_credit"),
                 seenAtMillis = sp.getLong(KEY_LAST_TIME, 0L)
             )
         } catch (_: Exception) {
