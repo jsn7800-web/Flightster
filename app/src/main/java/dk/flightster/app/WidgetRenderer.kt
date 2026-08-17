@@ -78,7 +78,8 @@ object WidgetRenderer {
         // Visuel del øverst, data nedenunder. Kvadratiske og brede widgets
         // får forskellig fordeling, så teksten aldrig klemmes.
         val wide = w.toFloat() / h > 2.0f
-        val visualHeight = if (wide) 0f else (footerTop - headerBottom) * 0.46f
+        // Selv en bred widget skal vise flyet — bare i en lavere stribe.
+        val visualHeight = (footerTop - headerBottom) * (if (wide) 0.34f else 0.46f)
         val visualTop = headerBottom + u * 1.2f
 
         if (visualHeight > u * 8f) {
